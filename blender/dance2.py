@@ -194,6 +194,48 @@ def _fcurves(ob):
     return [fc for layer in act.layers for st in layer.strips for bag in st.channelbags for fc in bag.fcurves]
 
 
+def save_blend(sc, path, audio, res, samples):
+    """.blend для рендера на своей видеокарте: звук упакован, вывод сразу в mp4 со звуком."""
+    from scene import set_bloom
+    # мягкий bloom вокруг ламп и светокамня
+    ng = bpy.data.node_groups.new("Finish", "CompositorNodeTree")
+    ng.interface.new_socket("Image", in_out="OUTPUT", socket_type="NodeSocketColor")
+    rl = ng.nodes.new("CompositorNodeRLayers")
+    glare = ng.nodes.new("CompositorNodeGlare")
+    out = ng.nodes.new("NodeGroupOutput")
+    set_bloom(glare)
+    for sock, val in (("Threshold", 1.2), ("Strength", 0.45), ("Size", 0.6)):
+        if sock in glare.inputs:
+            glare.inputs[sock].default_value = val
+    ng.links.new(rl.outputs["Image"], glare.inputs["Image"])
+    ng.links.new(glare.outputs["Image"], out.inputs[0])
+    sc.compositing_node_group = ng
+    sc.render.use_compositing = True
+    if audio:
+        wav = os.path.splitext(os.path.abspath(path))[0] + "_audio.wav"
+        total = (sc.frame_end - sc.frame_start + 1) / FPS
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", audio, "-vn", "-t", f"{total:.3f}", wav], check=True)
+        se = sc.sequence_editor_create()
+        st = se.strips.new_sound("music", wav, 1, 1)
+        st.sound.pack()
+    sc.cycles.device = "GPU"
+    sc.cycles.samples = samples
+    sc.cycles.use_adaptive_sampling = True
+    sc.cycles.use_denoising = True
+    sc.render.resolution_x = sc.render.resolution_y = res
+    sc.render.image_settings.media_type = "VIDEO"
+    sc.render.image_settings.file_format = "FFMPEG"
+    sc.render.ffmpeg.format = "MPEG4"
+    sc.render.ffmpeg.codec = "H264"
+    sc.render.ffmpeg.constant_rate_factor = "HIGH"
+    sc.render.ffmpeg.audio_codec = "AAC"
+    sc.render.filepath = "//render/dance2_intro.mp4"
+    sc.frame_set(1)
+    bpy.ops.file.pack_all()
+    bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(path), compress=True)
+    print("blend", path)
+
+
 def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("--left", required=True)
@@ -212,8 +254,7 @@ def main(argv):
     sc.view_settings.view_transform = "AgX"
     sc.view_settings.look = "AgX - Medium High Contrast"
     if a.save_blend:
-        bpy.ops.file.pack_all()
-        bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(a.save_blend), compress=True)
+        save_blend(sc, a.save_blend, a.audio, a.res, a.samples)
         return
     os.makedirs(a.frames, exist_ok=True)
     sc.render.image_settings.file_format = "PNG"
