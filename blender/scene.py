@@ -60,7 +60,7 @@ def box_mesh(name, size, offset, tex, inflate):
     return me
 
 
-def voxel_mesh(name, size, offset, tex, alpha, depth=0.8 * PX, gap=0.05 * PX):
+def voxel_mesh(name, size, offset, tex, alpha, depth=0.5 * PX, gap=0.0):
     """Верхний слой скина «как в моде 3D Skin Layers»: каждый непрозрачный пиксель —
     отдельный кубик, выступающий над гранью базовой модели."""
     import bmesh
@@ -291,10 +291,12 @@ def build_character(tag, img, slim, mat, mat_overlay, pose, loc, yaw, layers3d=F
         add_obj(f"{tag}_{key}", box_mesh(key, size, box_off, (bu, bv), 0), mat, piv)
         if alpha is not None:
             ov_me = voxel_mesh(key + "_ov", size, box_off, (ou, ov), alpha,
-                               depth=(1.0 if key == "head" else 0.75) * PX)
+                               depth=(0.5 if key == "head" else 0.3) * PX)
         else:
             ov_me = box_mesh(key + "_ov", size, box_off, (ou, ov), infl)
-        add_obj(f"{tag}_{key}_ov", ov_me, mat_overlay, piv)
+        ov = add_obj(f"{tag}_{key}_ov", ov_me, mat_overlay, piv)
+        if alpha is not None:
+            ov.visible_shadow = False  # объёмный слой не затеняет лицо и сам себя
         return piv
 
     body = part("body", (0, 0, 0), hips, (-4 * PX, -2 * PX, 0), (8, 12, 4), (0, 0, 0))
