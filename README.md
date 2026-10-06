@@ -55,3 +55,6 @@ python3 blender/anim.py --left skins/friend.png --right skins/4ered1t.png \
 
 Быстрее: Scripting → текст `render_fast.py` → Run Script — рендерит только уникальные позы
 (~120 кадров вместо 734) и сам собирает `//render/dance_fast.mp4` со звуком.
+
+Плавная версия: добавить `--smooth` — позы плавно переходят друг в друга (Bezier), все 734 кадра
+рендерятся через Ctrl+F12 (128 сэмплов). Пылинки в обеих версиях плывут плавно.

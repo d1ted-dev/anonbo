@@ -241,3 +241,40 @@ def polish(sc):
     sc.render.film_transparent = False
     sc.view_settings.view_transform = "AgX"
     sc.view_settings.look = "AgX - Medium High Contrast"
+
+
+def animate_dust(frame_end):
+    """Пылинки медленно плывут в лучах и слегка покачиваются — плавно, без скачков."""
+    import random
+    rnd = random.Random(7)
+    sources = [SPOT_MAIN] + [((x, y - 0.45, z - 0.5), (x * 0.25, -0.6, 0.0)) for x, y, z in LAMPS]
+    for i in range(N_DUST):
+        ob = bpy.data.objects[f"dust{i}"]
+        pos, tgt = sources[0] if i < N_DUST // 2 else sources[1 + i % 2]
+        p, t = Vector(pos), Vector(tgt)
+        k = rnd.uniform(0.45, 0.85)
+        c = p.lerp(t, k)
+        spread = (t - p).length * k * 0.14
+        start = Vector((c.x + rnd.uniform(-spread, spread), c.y + rnd.uniform(-spread, spread),
+                        max(0.3, c.z + rnd.uniform(-spread, spread))))
+        drift = Vector((rnd.uniform(-0.25, 0.25), rnd.uniform(-0.15, 0.15), rnd.uniform(0.1, 0.5)))
+        s = rnd.choice((0.7, 1.0, 1.4))
+        ob.animation_data_clear()
+        ob.scale = (s, s, s)
+        for f, pos_ in ((1, start), (frame_end, start + drift)):
+            ob.location = pos_
+            ob.rotation_euler = (f * 0.01 * (1 + i % 3), f * 0.013, f * 0.007 * (i % 5))
+            ob.keyframe_insert("location", frame=f)
+            ob.keyframe_insert("rotation_euler", frame=f)
+        ad = ob.animation_data
+        act = ad.action
+        fcs = list(act.fcurves) if hasattr(act, "fcurves") and len(act.fcurves) else [
+            fc for layer in act.layers for st in layer.strips for bag in st.channelbags for fc in bag.fcurves]
+        for fc in fcs:
+            for kp in fc.keyframe_points:
+                kp.interpolation = "LINEAR"
+            if fc.data_path == "location":
+                nm = fc.modifiers.new("NOISE")   # лёгкое покачивание в воздухе
+                nm.scale = rnd.uniform(40, 80)
+                nm.strength = 0.12
+                nm.phase = rnd.uniform(0, 100)

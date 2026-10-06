@@ -322,7 +322,7 @@ def build_scene(left_skin, right_skin, res, samples, stage=None, layers3d=False)
 PARTS_KEYED = ["root", "hips", "head_pivot", "arm_r_pivot", "arm_l_pivot", "leg_r_pivot", "leg_l_pivot"]
 
 
-def export_blend(path, sc, tl, stage, audio):
+def export_blend(path, sc, tl, stage, audio, smooth=False):
     """Сохранить .blend с готовой покадровой анимацией: позы — ключи с постоянной
     интерполяцией (держатся без плавности), чёрная пауза и затемнение в конце,
     звук на таймлайне, все текстуры упакованы в файл."""
@@ -364,13 +364,6 @@ def export_blend(path, sc, tl, stage, audio):
             if key not in seen:
                 seen.add(key)
                 done += 1
-            if stage:
-                from stage import shuffle_particles, N_DUST
-                shuffle_particles(done)
-                for i in range(N_DUST):
-                    d = o[f"dust{i}"]
-                    for prop in ("location", "rotation_euler", "scale"):
-                        d.keyframe_insert(prop, frame=frame)
             for tag in ("L", "R"):
                 for part in PARTS_KEYED:
                     ob = o[f"{tag}_{part}"]
@@ -397,9 +390,30 @@ def export_blend(path, sc, tl, stage, audio):
         return out
 
     for ob in o:
+        if ob.name.startswith("dust"):
+            continue
         for fc in curves(ob):
+            if smooth and fc.data_path == "rotation_euler" and fc.array_index == 2 \
+                    and ob.name.endswith("_root"):
+                # разворот без рывков: выбираем ближайший к прошлому эквивалент угла
+                prev = None
+                for kp in fc.keyframe_points:
+                    if prev is not None:
+                        while kp.co[1] - prev > math.pi:
+                            kp.co[1] -= 2 * math.pi
+                        while kp.co[1] - prev < -math.pi:
+                            kp.co[1] += 2 * math.pi
+                    prev = kp.co[1]
             for kp in fc.keyframe_points:
-                kp.interpolation = "CONSTANT"
+                if smooth:
+                    kp.interpolation = "BEZIER"
+                    kp.handle_left_type = kp.handle_right_type = "AUTO_CLAMPED"
+                else:
+                    kp.interpolation = "CONSTANT"
+            fc.update()
+    if stage:
+        from stage import animate_dust
+        animate_dust(sc.frame_end)
     for fc in curves(mat.node_tree):
         for i, kp in enumerate(fc.keyframe_points):
             kp.interpolation = "CONSTANT"
@@ -434,7 +448,10 @@ def export_blend(path, sc, tl, stage, audio):
     except (AttributeError, TypeError) as e:
         print("ffmpeg output not set:", e)
     sc.render.filepath = "//render/dance_"
-    add_fast_render_script(tl)
+    if smooth:
+        sc.cycles.samples = 128   # все 734 кадра уникальны — ставим разумное время рендера
+    else:
+        add_fast_render_script(tl)
     sc.frame_set(1)
     bpy.ops.file.pack_all()
     bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(path), compress=True)
@@ -537,6 +554,8 @@ def main(argv):
                     help="вместо рендера сохранить .blend с анимацией (для рендера на своей видеокарте)")
     ap.add_argument("--layers3d", action="store_true",
                     help="объёмный верхний слой скина, как в моде 3D Skin Layers (по умолчанию выкл.)")
+    ap.add_argument("--smooth", action="store_true",
+                    help="в .blend: плавные переходы между позами вместо покадровых")
     ap.add_argument("--reuse", action="store_true", help="не перерендеривать уже готовые кадры")
     a = ap.parse_args(argv)
 
@@ -545,7 +564,7 @@ def main(argv):
     sc = build_scene(a.left, a.right, a.res, a.samples, a.stage, a.layers3d)
     only = set(a.only.split(",")) if a.only else None
     if a.export_blend:
-        export_blend(a.export_blend, sc, tl, a.stage, a.audio)
+        export_blend(a.export_blend, sc, tl, a.stage, a.audio, a.smooth)
         return
 
     done = set()
