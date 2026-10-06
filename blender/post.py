@@ -6,6 +6,7 @@ import json
 import math
 import sys
 
+import numpy as np
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 
@@ -20,7 +21,50 @@ def star(draw, cx, cy, r, color, thin=0.16):
     draw.polygon(pts, fill=color)
 
 
-def main(src, meta, dst, style="soft"):
+def hsv_to_rgb(h, s, v):
+    i = np.floor(h * 6).astype(int) % 6
+    f = h * 6 - np.floor(h * 6)
+    p, q, t = v * (1 - s), v * (1 - s * f), v * (1 - s * (1 - f))
+    r = np.choose(i, [v, q, p, p, t, v]); g = np.choose(i, [t, v, v, q, p, p])
+    b = np.choose(i, [p, p, t, v, v, q])
+    return np.stack([r, g, b], -1)
+
+
+def rainbow_shell(im, mask_path):
+    """Радужная оболочка по силуэту: розовый слева сверху → лиловый → голубой → зелёный → жёлтый снизу."""
+    W, H = im.size
+    u = W / 1920
+    mask = Image.open(mask_path).convert("L").resize(im.size)
+    m = np.asarray(mask, np.float32) / 255
+    ys, xs = np.nonzero(m > 0.5)
+    cx, cy = xs.mean(), ys.mean()
+
+    def grow(r, blur):
+        k = max(3, int(r * u) | 1)
+        g = mask.filter(ImageFilter.MaxFilter(k)) if k > 1 else mask
+        return np.asarray(g.filter(ImageFilter.GaussianBlur(blur * u)), np.float32) / 255
+
+    yy, xx = np.mgrid[0:H, 0:W]
+    ang = np.degrees(np.arctan2(-(yy - cy), (xx - cx) * 1.6))
+    hue = np.interp(ang, [-180, -100, -45, 0, 50, 115, 180],
+                         [0.97, 0.14, 0.32, 0.5, 0.76, 0.9, 0.97]) % 1
+    rainbow = hsv_to_rgb(hue, np.full_like(hue, 0.72), np.ones_like(hue))
+
+    a = np.asarray(im, np.float32) / 255
+    # мягкий белый свет снаружи
+    outside = (1 - m)[..., None]
+    outer = grow(9, 26)[..., None] * 0.6 * outside
+    a = 1 - (1 - a) * (1 - outer)
+    # цветная полоса снаружи по контуру
+    ring = np.clip(grow(22, 5) - m, 0, 1)[..., None]
+    a = a * (1 - ring * 0.95) + rainbow * ring * 0.95
+    # тонкая белая кромка у самого силуэта
+    edge = np.clip(grow(6, 1.5) - m, 0, 1)[..., None]
+    a = 1 - (1 - a) * (1 - edge * 0.85)
+    return Image.fromarray((np.clip(a, 0, 1) * 255).astype(np.uint8))
+
+
+def main(src, meta, dst, style="soft", mask=None):
     bright = style == "bright"
     im = Image.open(src).convert("RGB")
     W, H = im.size
@@ -32,19 +76,25 @@ def main(src, meta, dst, style="soft"):
     # bloom: яркие участки размываем в нескольких масштабах и складываем
     th, gain = (150, 2.4) if bright else (160, 2.6)
     lum = im.convert("L").point(lambda v: 0 if v < th else int((v - th) * gain))
-    bright = Image.composite(im, Image.new("RGB", im.size), lum)
+    if mask:  # сияющую фигуру не выбеливаем — её свет даёт оболочка
+        inv = Image.open(mask).convert("L").resize(im.size).point(lambda v: 255 - v)
+        lum = ImageChops.multiply(lum, inv)
+    hot = Image.composite(im, Image.new("RGB", im.size), lum)
     glow = Image.new("RGB", im.size)
     for rad, k in ((W / 160, 0.9), (W / 60, 0.7), (W / 25, 0.55)):
-        b = bright.filter(ImageFilter.GaussianBlur(rad))
+        b = hot.filter(ImageFilter.GaussianBlur(rad))
         glow = ImageChops.add(glow, b.point(lambda v, k=k: int(v * k)))
     im = ImageChops.screen(im, glow)
 
+    if mask:
+        im = rainbow_shell(im, mask)
     # мягкий розово-белый ореол вокруг сияющей фигуры
     halo = Image.new("RGB", im.size)
     d = ImageDraw.Draw(halo)
     cx, cy = hx, hy + body_h * 0.35
-    d.ellipse([cx - body_h * 0.42, cy - body_h * 0.62, cx + body_h * 0.42, cy + body_h * 0.62],
-              fill=(70, 45, 75))
+    if not mask:
+        d.ellipse([cx - body_h * 0.42, cy - body_h * 0.62, cx + body_h * 0.42, cy + body_h * 0.62],
+                  fill=(70, 45, 75))
     im = ImageChops.screen(im, halo.filter(ImageFilter.GaussianBlur(body_h * 0.22)))
 
     # звёздочки и месяц
@@ -74,4 +124,4 @@ def main(src, meta, dst, style="soft"):
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:5])
+    main(*sys.argv[1:6])

@@ -125,6 +125,91 @@ def make_material(name, img, tint, tint_amt, brightness, glow, lift_white=0.32):
     return mat
 
 
+def make_rainbow_material(name, img):
+    """Сияющая фигура: свои цвета, высветленные до пастели, + радужный ободок по краям."""
+    mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    n, l = mat.node_tree.nodes, mat.node_tree.links
+    n.clear()
+    out = n.new("ShaderNodeOutputMaterial")
+    bsdf = n.new("ShaderNodeBsdfPrincipled")
+    bsdf.inputs["Roughness"].default_value = 0.8
+    texn = n.new("ShaderNodeTexImage"); texn.image = img; texn.interpolation = "Closest"
+    l.new(texn.outputs["Alpha"], bsdf.inputs["Alpha"])
+
+    def mixc(a, b, fac, blend="MIX"):
+        m = n.new("ShaderNodeMix"); m.data_type = "RGBA"; m.blend_type = blend
+        m.inputs["Factor"].default_value = fac
+        for sock, val in (("A", a), ("B", b)):
+            if isinstance(val, tuple):
+                m.inputs[sock].default_value = val
+            else:
+                l.new(val, m.inputs[sock])
+        return m.outputs["Result"]
+
+    # пастель: чуть меньше насыщенности, подтянуть к светло-лиловому белому
+    hsv = n.new("ShaderNodeHueSaturation")
+    hsv.inputs["Saturation"].default_value = 1.05
+    l.new(texn.outputs["Color"], hsv.inputs["Color"])
+    pastel = mixc(hsv.outputs["Color"], (0.97, 0.94, 1.0, 1), 0.36)
+
+    # мягкий перелив: розовый сверху → жёлто-зелёный снизу (по высоте в мире)
+    geo = n.new("ShaderNodeNewGeometry")
+    sep = n.new("ShaderNodeSeparateXYZ"); l.new(geo.outputs["Position"], sep.inputs["Vector"])
+    hz = n.new("ShaderNodeMath"); hz.operation = "MULTIPLY"; hz.inputs[1].default_value = 1 / (32 * PX)
+    l.new(sep.outputs["Z"], hz.inputs[0])
+    ramp = n.new("ShaderNodeValToRGB")
+    ramp.color_ramp.elements[0].position = 0.15; ramp.color_ramp.elements[0].color = (0.85, 1.0, 0.7, 1)
+    ramp.color_ramp.elements[1].position = 0.95; ramp.color_ramp.elements[1].color = (1.0, 0.75, 0.9, 1)
+    ramp.color_ramp.elements.new(0.55).color = (1.0, 0.97, 0.85, 1)
+    l.new(hz.outputs["Value"], ramp.inputs["Fac"])
+    sheen = mixc(pastel, ramp.outputs["Color"], 0.5, "MULTIPLY")
+    # светится в основном сама (свет сцены почти не влияет) — так цвета не выгорают
+    l.new(mixc(sheen, (0, 0, 0, 1), 0.7), bsdf.inputs["Base Color"])
+
+    # радужный ободок: оттенок зависит от положения, сила — от угла к камере
+    hue = n.new("ShaderNodeMath"); hue.operation = "MULTIPLY_ADD"
+    hue.inputs[1].default_value = 0.22; hue.inputs[2].default_value = 0.1
+    l.new(sep.outputs["Z"], hue.inputs[0])
+    hx = n.new("ShaderNodeMath"); hx.operation = "MULTIPLY_ADD"
+    hx.inputs[1].default_value = -0.35
+    l.new(sep.outputs["X"], hx.inputs[0]); l.new(hue.outputs["Value"], hx.inputs[2])
+    fr = n.new("ShaderNodeMath"); fr.operation = "FRACT"; l.new(hx.outputs["Value"], fr.inputs[0])
+    rgb = n.new("ShaderNodeCombineColor"); rgb.mode = "HSV"
+    rgb.inputs[1].default_value = 0.6; rgb.inputs[2].default_value = 1.0
+    l.new(fr.outputs["Value"], rgb.inputs[0])
+    lw = n.new("ShaderNodeLayerWeight"); lw.inputs["Blend"].default_value = 0.45
+    pw = n.new("ShaderNodeMath"); pw.operation = "POWER"; pw.inputs[1].default_value = 2.5
+    l.new(lw.outputs["Facing"], pw.inputs[0])
+    # чёрный → цвет радуги по мере того, как грань отворачивается от камеры
+    rim_s = n.new("ShaderNodeMix"); rim_s.data_type = "RGBA"
+    l.new(pw.outputs["Value"], rim_s.inputs["Factor"])
+    rim_s.inputs["A"].default_value = (0, 0, 0, 1)
+    l.new(rgb.outputs["Color"], rim_s.inputs["B"])
+    base_em = sheen  # светится своим цветом
+    em = mixc(base_em, rim_s.outputs["Result"], 1.0, "ADD")
+    l.new(em, bsdf.inputs["Emission Color"])
+    bsdf.inputs["Emission Strength"].default_value = 1.6
+    l.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+    return mat
+
+
+def make_mask_material(img):
+    mat = bpy.data.materials.new("mask")
+    mat.use_nodes = True
+    n, l = mat.node_tree.nodes, mat.node_tree.links
+    n.clear()
+    out = n.new("ShaderNodeOutputMaterial")
+    texn = n.new("ShaderNodeTexImage"); texn.image = img; texn.interpolation = "Closest"
+    em = n.new("ShaderNodeEmission"); em.inputs["Strength"].default_value = 1.0
+    tr = n.new("ShaderNodeBsdfTransparent")
+    mx = n.new("ShaderNodeMixShader")
+    l.new(texn.outputs["Alpha"], mx.inputs["Fac"])
+    l.new(tr.outputs["BSDF"], mx.inputs[1]); l.new(em.outputs["Emission"], mx.inputs[2])
+    l.new(mx.outputs["Shader"], out.inputs["Surface"])
+    return mat
+
+
 def add_obj(name, mesh, mat, parent):
     ob = bpy.data.objects.new(name, mesh)
     ob.data.materials.append(mat)
@@ -214,6 +299,9 @@ def main(argv):
     ap.add_argument("--res", type=int, default=1600)
     ap.add_argument("--style", default="soft", choices=["soft", "bright"],
                     help="bright — более яркое сияние и отражающий пол")
+    ap.add_argument("--shell", action="store_true",
+                    help="сияющая фигура со своими цветами и радужной оболочкой")
+    ap.add_argument("--mask", help="куда отрендерить маску силуэта сияющей фигуры")
     ap.add_argument("--meta", help="куда записать экранные координаты сияющей головы")
     a = ap.parse_args(argv)
     cfg = dict(VARIANTS[a.variant])
@@ -234,8 +322,11 @@ def main(argv):
     heads = []
     for i, (pose, (tint, amt, br, glow), (x, y)) in enumerate(zip(POSES, LOOKS, spots)):
         lw = 0.42 if bright else 0.32
-        m = make_material(f"m{i}", img, tint, amt, br, glow, lw)
-        mo = make_material(f"mo{i}", img, tint, amt, br, glow, lw)
+        if a.shell and glow > 0:
+            m = mo = make_rainbow_material(f"rb{i}", img)
+        else:
+            m = make_material(f"m{i}", img, tint, amt, br, glow, lw)
+            mo = make_material(f"mo{i}", img, tint, amt, br, glow, lw)
         root = build_character(f"c{i}", img, a.model == "slim", m, mo, pose, (x, y, 0), yaw)
         heads.append(root)
 
@@ -309,6 +400,24 @@ def main(argv):
     sc.render.image_settings.file_format = "PNG"
     sc.render.filepath = a.out
     bpy.ops.render.render(write_still=True)
+
+    if a.mask:
+        # второй быстрый проход: только сияющая фигура, белым по чёрному
+        mm = make_mask_material(img)
+        for ob in sc.objects:
+            if ob.type == "MESH":
+                if ob.name.startswith("c3_"):
+                    ob.data.materials[0] = mm
+                else:
+                    ob.hide_render = True
+        bg.inputs["Color"].default_value = (0, 0, 0, 1)
+        sc.render.use_freestyle = False
+        sc.view_settings.view_transform = "Standard"
+        sc.view_settings.look = "None"
+        sc.cycles.samples = 8
+        sc.cycles.use_denoising = False
+        sc.render.filepath = a.mask
+        bpy.ops.render.render(write_still=True)
 
     if a.meta:
         import json
