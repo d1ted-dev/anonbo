@@ -99,25 +99,26 @@ INTRO = [
      P(0.45, yaw=-82, ar=(-40, -6), al=(-40, 6), body=(0, -3, 0))),
     (P(-0.6, yaw=82, ar=(-46, -8), al=(-46, 8), body=(6, 0, 0), lr=(-14, 0), ll=(8, 0)),
      P(0.42, yaw=-82, ar=(-46, -8), al=(-46, 8), body=(8, 0, 0), head=(8, 0, 0))),
-    # 22 — кружатся, шаг навстречу
-    (P(-0.3, y=-0.05, yaw=30, ar=(-30, -10), al=(-50, -45), lr=(-30, 0), ll=(28, 0)),
-     P(0.25, y=0.08, yaw=-35, ar=(-50, 45), al=(-30, 10), lr=(26, 0), ll=(-30, 0))),
-    # 23 — слились в одну фигуру
-    (P(0.0, y=-0.02, ar=(10, 2), al=(10, -2)),
-     P(0.0, y=0.32, ar=(10, 2), al=(10, -2))),
 ]
 
 
-def close_pair(left_front=True):
-    """Стоят вплотную лицом к камере, руки сцеплены внизу, внутренние ноги скрещены."""
-    yl, yr = (-0.06, 0.06) if left_front else (0.06, -0.06)
-    return (P(-0.24, y=yl, yaw=-4, al=(-14, -22), ar=(4, 4), ll=(0, -9), lr=(0, 3), head=(0, 0, 3)),
-            P(0.24, y=yr, yaw=4, ar=(-14, 22), al=(4, -4), lr=(0, 9), ll=(0, -3), head=(0, 0, -3)))
+SPIN_R = 0.62  # радиус кружения: держатся за руку на вытянутых руках
 
 
-def single():
-    return (P(0.0, y=-0.02, ar=(8, 2), al=(8, -2)),
-            P(0.0, y=0.32, ar=(8, 2), al=(8, -2)))
+def spin(phi, step=0):
+    """Пара кружится вокруг общего центра, держась за руку.
+    phi — угол линии L→R (0: R справа, 90: R позади, L спиной к камере, 180: поменялись)."""
+    d = (math.cos(math.radians(phi)), math.sin(math.radians(phi)))
+    yaw_l = math.degrees(math.atan2(d[0], -d[1]))
+    yaw_r = math.degrees(math.atan2(-d[0], d[1]))
+    s1, s2 = (-24, 18) if step % 2 == 0 else (18, -24)  # шаг: ноги в разные стороны по очереди
+    hop = 0.07 if step % 2 else 0.0                      # лёгкие подпрыгивания
+    out = 58 if step % 2 else 70                         # свободная рука в сторону
+    # держатся одной рукой (у L — левая, у R — правая), вторая отведена в сторону
+    return (P(-SPIN_R * d[0], -SPIN_R * d[1], yaw=yaw_l, z=hop, body=(-10, 0, 0), head=(-8, 0, 6),
+              al=(-80, 4), ar=(-10, out), lr=(s1, 0), ll=(s2, 0)),
+            P(SPIN_R * d[0], SPIN_R * d[1], yaw=yaw_r, z=hop, body=(-10, 0, 0), head=(-8, 0, -6),
+              ar=(-80, -4), al=(-10, -out), lr=(s2, 0), ll=(s1, 0)))
 
 
 def wide(kind):
@@ -136,18 +137,21 @@ def wide(kind):
 
 
 CYCLE = ["close", "single", "close", "wide-a", "wide-kick", "wide-b"]
+SPIN_STEP = {"close": 45, "single": 90, "close2": 135}
 
 
 def timeline():
-    """Список (ключ позы, (поза левого, поза правого) | None, длительность) по сегментам.
-    Персонаж R («правый» в начале) проходит сквозь L на каждом «слиянии» и меняется местами."""
+    """Список (ключ кадра, (поза L, поза R) | None, длительность) по сегментам.
+    Между раскрытиями «в стороны» пара делает пол-оборота (45° → 90° → 135° → 180°),
+    поэтому после каждого «слияния» они меняются местами."""
     out = []
-    r_on_right = True
+    base = 0      # угол последнего раскрытия «в стороны» (0 — R справа, 180 — R слева)
+    step = 0
 
-    def assign(pair):
-        a, b = pair
-        # pair[0] — тот, кто слева в кадре
-        return (a, b) if r_on_right else (b, a)  # (поза L-персонажа, поза R-персонажа)
+    def wide_pair(kind):
+        a, b = wide(kind)          # (левый в кадре, правый в кадре)
+        r_right = base % 360 == 0
+        return (a, b) if r_right else (b, a)
 
     for s, (_, dur) in enumerate(SEGMENTS):
         if s < len(INTRO):
@@ -155,20 +159,35 @@ def timeline():
             continue
         if s == BLACK_SEG:
             out.append(("black", None, dur))
-            r_on_right = True  # вторая половина начинается как первая: R справа
+            base = 0
             continue
-        if s in (17, 18, 19, 20):
-            kind = ["close", "wide-a", "wide-kick", "wide-b"][s - 17]
+        if s == 15:            # 22: начинают кружиться
+            kind, phase = "spin", 45
+        elif s == 16:          # 23: один за другим — передний спиной к нам
+            kind, phase = "spin", 90
+        elif s == 17:          # 24
+            kind, phase = "spin", 135
         else:
-            base = 21 if s < BLACK_SEG else BLACK_SEG + 1
-            kind = CYCLE[(s - base) % 6]
-        if kind == "single":
-            out.append(("single", single(), dur))
-            r_on_right = not r_on_right
+            if s in (18, 19, 20):
+                kind = ["wide-a", "wide-kick", "wide-b"][s - 18]
+            else:
+                start = 21 if s < BLACK_SEG else BLACK_SEG + 1
+                i = (s - start) % 6
+                kind = CYCLE[i]
+                if kind == "close" and i == 2:
+                    kind = "close2"
+            phase = SPIN_STEP.get(kind)
+            if phase is not None:
+                kind = "spin"
+        if kind == "spin":
+            phi = base + phase
+            step += 1
+            out.append((f"spin{phi % 360:03d}-{step % 2}", spin(phi, step), dur))
+            if phase == 135:
+                base += 180
             continue
-        pair = close_pair(left_front=r_on_right) if kind == "close" else wide(kind.split("-")[1])
-        side = "R" if r_on_right else "L"
-        out.append((f"{kind}-{side}", assign(pair), dur))
+        w = kind.split("-")[1]
+        out.append((f"wide-{w}-{base % 360}", wide_pair(w), dur))
     return out
 
 
