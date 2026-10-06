@@ -132,8 +132,10 @@ def wide(kind):
         legs_l = dict(lr=(0, 12), ll=(0, -12))
         legs_r = dict(lr=(0, 12), ll=(0, -12))
         lean = 0
-    return (P(-1.18, al=(0, -86), ar=(0, out), body=(0, lean, 0), head=(0, 0, 6), **legs_l),
-            P(1.18, ar=(0, 86), al=(0, -out), body=(0, -lean, 0), head=(0, 0, -6), **legs_r))
+    # корпус развёрнут к партнёру, голова ещё сильнее — смотрят друг на друга, а не в камеру
+    turn, look = 35, 30
+    return (P(-0.92, yaw=turn, al=(0, -86), ar=(0, out), body=(0, lean, 0), head=(0, 4, look), **legs_l),
+            P(0.92, yaw=-turn, ar=(0, 86), al=(0, -out), body=(0, -lean, 0), head=(0, -4, -look), **legs_r))
 
 
 CYCLE = ["close", "single", "close", "wide-a", "wide-kick", "wide-b"]
