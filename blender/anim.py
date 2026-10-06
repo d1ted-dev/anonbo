@@ -287,9 +287,9 @@ def build_scene(left_skin, right_skin, res, samples, stage=None):
         # сцена из блоков Minecraft со сценическим светом
         from stage import build_stage
         build_stage(stage)
-        cam_d.lens = 58
-        cam.location = (0, -9.2, 2.0)
-        look_at(cam, (0, 0.4, 1.15))
+        cam_d.lens = 46
+        cam.location = (0, -10.2, 2.3)
+        look_at(cam, (0, 0.4, 1.35))
     else:
         # светлый «бумажный» фон, мягкие тени на полу
         bg.inputs["Color"].default_value = (0.96, 0.955, 0.95, 1)
@@ -319,6 +319,124 @@ def build_scene(left_skin, right_skin, res, samples, stage=None):
     return sc
 
 
+PARTS_KEYED = ["root", "hips", "head_pivot", "arm_r_pivot", "arm_l_pivot", "leg_r_pivot", "leg_l_pivot"]
+
+
+def export_blend(path, sc, tl, stage, audio):
+    """Сохранить .blend с готовой покадровой анимацией: позы — ключи с постоянной
+    интерполяцией (держатся без плавности), чёрная пауза и затемнение в конце,
+    звук на таймлайне, все текстуры упакованы в файл."""
+    o = bpy.data.objects
+    sc.render.fps = 30
+    sc.frame_start = 1
+    sc.frame_end = sum(d for _, _, d in tl)
+
+    # чёрная заслонка перед камерой: пауза и финальное затемнение
+    cam = sc.camera
+    mat = bpy.data.materials.new("blackout")
+    mat.use_nodes = True
+    n = mat.node_tree.nodes
+    n.remove(n["Principled BSDF"])
+    mix = n.new("ShaderNodeMixShader")
+    tr = n.new("ShaderNodeBsdfTransparent")
+    em = n.new("ShaderNodeEmission"); em.inputs["Color"].default_value = (0, 0, 0, 1)
+    mat.node_tree.links.new(tr.outputs[0], mix.inputs[1])
+    mat.node_tree.links.new(em.outputs[0], mix.inputs[2])
+    mat.node_tree.links.new(mix.outputs[0], n["Material Output"].inputs["Surface"])
+    bpy.ops.mesh.primitive_plane_add(size=1)
+    plate = bpy.context.active_object
+    plate.name = "blackout"
+    plate.data.materials.append(mat)
+    plate.parent = cam
+    plate.location = (0, 0, -cam.data.clip_start - 0.05)
+    plate.scale = (2, 2, 1)
+    plate.visible_shadow = False
+    fac = mix.inputs["Fac"]
+
+    frame = 1
+    done = 0
+    seen = set()
+    for key, poses, dur in tl:
+        fac.default_value = 1.0 if poses is None else 0.0
+        fac.keyframe_insert("default_value", frame=frame)
+        if poses is not None:
+            set_pose("L", poses[0]); set_pose("R", poses[1])
+            if key not in seen:
+                seen.add(key)
+                done += 1
+            if stage:
+                from stage import shuffle_particles, N_DUST
+                shuffle_particles(done)
+                for i in range(N_DUST):
+                    d = o[f"dust{i}"]
+                    for prop in ("location", "rotation_euler", "scale"):
+                        d.keyframe_insert(prop, frame=frame)
+            for tag in ("L", "R"):
+                for part in PARTS_KEYED:
+                    ob = o[f"{tag}_{part}"]
+                    ob.keyframe_insert("location", frame=frame)
+                    ob.keyframe_insert("rotation_euler", frame=frame)
+        frame += dur
+    # финальное затемнение — единственное плавное место
+    fade_s, fade_d = SEGMENTS[FADE_SEG]
+    fac.default_value = 0.0; fac.keyframe_insert("default_value", frame=fade_s + 1)
+    fac.default_value = 1.0; fac.keyframe_insert("default_value", frame=fade_s + fade_d + 1)
+
+    def curves(owner):
+        ad = owner.animation_data
+        if not ad or not ad.action:
+            return []
+        act = ad.action
+        if hasattr(act, "fcurves") and len(act.fcurves):
+            return list(act.fcurves)
+        out = []
+        for layer in getattr(act, "layers", []):
+            for strip in layer.strips:
+                for bag in strip.channelbags:
+                    out += list(bag.fcurves)
+        return out
+
+    for ob in o:
+        for fc in curves(ob):
+            for kp in fc.keyframe_points:
+                kp.interpolation = "CONSTANT"
+    for fc in curves(mat.node_tree):
+        for i, kp in enumerate(fc.keyframe_points):
+            kp.interpolation = "CONSTANT"
+        if len(fc.keyframe_points) >= 2:
+            fc.keyframe_points[-2].interpolation = "LINEAR"  # плавное затемнение в конце
+
+    # звук
+    if audio:
+        wav = os.path.splitext(path)[0] + "_audio.wav"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", audio, "-vn", wav], check=True)
+        se = sc.sequence_editor_create()
+        coll = se.strips if hasattr(se, "strips") else se.sequences
+        strip = coll.new_sound("music", os.path.abspath(wav), 1, 1)
+        strip.sound.pack()
+    # настройки рендера под видеокарту, вывод сразу в mp4 со звуком
+    sc.cycles.device = "GPU"
+    sc.cycles.samples = 256
+    sc.render.resolution_x = sc.render.resolution_y = 1080
+    try:
+        sc.render.image_settings.media_type = "VIDEO"
+    except (AttributeError, TypeError):
+        pass
+    try:
+        sc.render.image_settings.file_format = "FFMPEG"
+        sc.render.ffmpeg.format = "MPEG4"
+        sc.render.ffmpeg.codec = "H264"
+        sc.render.ffmpeg.constant_rate_factor = "HIGH"
+        sc.render.ffmpeg.audio_codec = "AAC"
+    except (AttributeError, TypeError) as e:
+        print("ffmpeg output not set:", e)
+    sc.render.filepath = "//render/dance_"
+    sc.frame_set(1)
+    bpy.ops.file.pack_all()
+    bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(path), compress=True)
+    print("blend", path, flush=True)
+
+
 def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("--left", required=True, help="скин того, кто стоит слева в начале")
@@ -330,6 +448,8 @@ def main(argv):
     ap.add_argument("--samples", type=int, default=48)
     ap.add_argument("--only", help="отрендерить только эти ключи поз (через запятую)")
     ap.add_argument("--stage", help="папка с текстурами блоков — сцена из блоков Minecraft")
+    ap.add_argument("--export-blend", dest="export_blend",
+                    help="вместо рендера сохранить .blend с анимацией (для рендера на своей видеокарте)")
     ap.add_argument("--reuse", action="store_true", help="не перерендеривать уже готовые кадры")
     a = ap.parse_args(argv)
 
@@ -337,6 +457,9 @@ def main(argv):
     tl = timeline()
     sc = build_scene(a.left, a.right, a.res, a.samples, a.stage)
     only = set(a.only.split(",")) if a.only else None
+    if a.export_blend:
+        export_blend(a.export_blend, sc, tl, a.stage, a.audio)
+        return
 
     done = set()
     for key, poses, _ in tl:
@@ -347,6 +470,9 @@ def main(argv):
             continue
         done.add(key)
         set_pose("L", poses[0]); set_pose("R", poses[1])
+        if a.stage:
+            from stage import shuffle_particles
+            shuffle_particles(len(done))
         sc.render.filepath = os.path.abspath(os.path.join(a.frames, key + ".png"))
         bpy.ops.render.render(write_still=True)
         print("rendered", key, flush=True)

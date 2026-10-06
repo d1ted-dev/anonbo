@@ -12,7 +12,7 @@ import urllib.request
 import zipfile
 
 NEEDED = ["dark_oak_planks", "red_wool", "polished_blackstone_bricks", "dark_oak_log",
-          "glowstone", "shroomlight"]
+          "glowstone", "shroomlight", "spruce_planks", "redstone_lamp_on"]
 
 
 def main(version="26.2", out="blocks"):

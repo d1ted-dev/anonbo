@@ -73,31 +73,45 @@ def _light(kind, loc, energy, color, target=None, **kw):
     return ob
 
 
+SPOT_MAIN = ((0.4, -3.5, 8.5), (0, 0.2, 0.6))          # основной прожектор (вне кадра)
+LAMPS = [(-2.5, 2.9, 4.55), (2.5, 2.9, 4.55)]           # лампы под балкой над занавесом
+N_DUST = 34
+
+
 def build_stage(tex_dir):
     sc = bpy.context.scene
     planks = _block_mat(tex_dir, "dark_oak_planks")
+    hall = _block_mat(tex_dir, "spruce_planks")
     wool = _block_mat(tex_dir, "red_wool")
     pillar = _block_mat(tex_dir, "polished_blackstone_bricks")
     beam = _block_mat(tex_dir, "dark_oak_log")
     glow = _block_mat(tex_dir, "glowstone", emit=2.5)
     shroom = _block_mat(tex_dir, "shroomlight", emit=1.2)
+    lamp = _block_mat(tex_dir, "redstone_lamp_on", emit=6.0)
 
-    # пол-сцена: верх на z=0, передний край сцены перед камерой
+    # сцена: верх на z=0, передний край y=-4, отделка кромки, ниже — пол зала
     tiled_box("floor", -9, 9, -4, 5, -1, 0, planks)
+    tiled_box("edge_trim", -9, 9, -4.12, -3.88, -0.18, 0.05, pillar)
+    tiled_box("hall", -12, 12, -14, -4.25, -2, -1, hall)
     # занавес: колонны шерсти, чётные чуть выдвинуты — получаются складки
     for i, x in enumerate(range(-9, 9)):
         y = 3.5 if i % 2 == 0 else 3.8
         tiled_box(f"curtain{i}", x, x + 1, y, y + 1, 0, 7, wool)
-    tiled_box("beam", -9, 9, 3.2, 4.2, 7, 8, beam)
-    # колонны по бокам со светокамнем наверху
-    for x in (-5, 4):
-        tiled_box(f"pillar{x}", x, x + 1, 2.0, 3.0, 0, 3, pillar)
-        tiled_box(f"pillar_glow{x}", x, x + 1, 2.0, 3.0, 3, 4, glow)
-        _light("POINT", (x + 0.5, 1.7, 3.5), 90, (1.0, 0.75, 0.45), shadow_soft_size=0.5)
-    # рампа: грибосветы, утопленные в передний край пола
+    # балка над сценой с лампами-прожекторами
+    tiled_box("beam", -9, 9, 2.7, 3.5, 4.7, 5.5, beam)
+    for i, (x, y, z) in enumerate(LAMPS):
+        tiled_box(f"lamp{i}", x - 0.4, x + 0.4, y - 0.4, y + 0.4, z - 0.6, z + 0.15, lamp)
+        _light("SPOT", (x, y - 0.45, z - 0.5), 2200, (1.0, 0.82, 0.62), (x * 0.25, -0.6, 0.0),
+               spot_size=math.radians(26), spot_blend=0.35, shadow_soft_size=0.15)
+    # колонны по бокам со светокамнем наверху — в кадре
+    for x in (-3.9, 2.9):
+        tiled_box(f"pillar{x}", x, x + 1, 1.6, 2.6, 0, 3, pillar)
+        tiled_box(f"pillar_glow{x}", x, x + 1, 1.6, 2.6, 3, 4, glow)
+        _light("POINT", (x + 0.5, 1.3, 3.5), 70, (1.0, 0.75, 0.45), shadow_soft_size=0.5)
+    # рампа: грибосветы, утопленные в передний край
     for x in (-3.5, 3.5):
-        tiled_box(f"foot{int(x)}", x - 0.5, x + 0.5, -3.4, -2.4, -0.9, 0.08, shroom)
-        _light("POINT", (x, -2.9, 0.4), 18, (1.0, 0.6, 0.3), shadow_soft_size=0.4)
+        tiled_box(f"foot{int(x)}", x - 0.5, x + 0.5, -3.9, -2.9, -0.9, 0.08, shroom)
+        _light("POINT", (x, -3.4, 0.4), 18, (1.0, 0.6, 0.3), shadow_soft_size=0.4)
 
     # тёмный зал
     world = sc.world
@@ -105,8 +119,51 @@ def build_stage(tex_dir):
     bg.inputs["Color"].default_value = (0.01, 0.008, 0.016, 1)
     bg.inputs["Strength"].default_value = 1.0
 
-    # сценический свет: тёплый прожектор сверху, мягкий фронтальный, контровой сзади
-    _light("SPOT", (0.4, -3.5, 8.5), 6500, (1.0, 0.9, 0.78), (0, 0.2, 0.6),
-           spot_size=math.radians(34), spot_blend=0.55, shadow_soft_size=0.5)
-    _light("AREA", (0, -9, 2.6), 150, (0.85, 0.85, 1.0), (0, 0, 1.2), size=4)
-    _light("AREA", (0, 2.8, 6), 260, (1.0, 0.55, 0.7), (0, -0.5, 1.2), size=2.5)
+    # лёгкая дымка над сценой — в ней видны лучи прожекторов
+    haze = bpy.data.materials.new("haze")
+    haze.use_nodes = True
+    hn = haze.node_tree.nodes
+    hn.remove(hn["Principled BSDF"])
+    vol = hn.new("ShaderNodeVolumePrincipled")
+    vol.inputs["Density"].default_value = 0.045
+    vol.inputs["Anisotropy"].default_value = 0.35
+    haze.node_tree.links.new(vol.outputs[0], hn["Material Output"].inputs["Volume"])
+    hb = tiled_box("haze", -6, 6, -4, 3.4, 0.0, 7.5, haze)
+    hb.visible_shadow = False
+
+    # основной тёплый прожектор спереди-сверху, слабая заливка, розовый контровой
+    (pos, tgt) = SPOT_MAIN
+    _light("SPOT", pos, 6000, (1.0, 0.9, 0.78), tgt,
+           spot_size=math.radians(30), spot_blend=0.4, shadow_soft_size=0.12)
+    _light("AREA", (0, -9, 2.6), 120, (0.85, 0.85, 1.0), (0, 0, 1.2), size=4)
+    _light("AREA", (0, 2.8, 6), 160, (1.0, 0.55, 0.7), (0, -0.5, 1.2), size=2.5)
+
+    # заготовка частиц: квадратные «пылинки» как в Minecraft, перемешиваются на каждом кадре
+    dust = bpy.data.materials.new("dust")
+    dust.use_nodes = True
+    db = dust.node_tree.nodes["Principled BSDF"]
+    db.inputs["Base Color"].default_value = (1, 0.9, 0.7, 1)
+    db.inputs["Emission Color"].default_value = (1, 0.88, 0.65, 1)
+    db.inputs["Emission Strength"].default_value = 1.4
+    for i in range(N_DUST):
+        ob = tiled_box(f"dust{i}", -0.018, 0.018, -0.018, 0.018, -0.018, 0.018, dust)
+        ob.visible_shadow = False
+
+
+def shuffle_particles(seed):
+    """Разбросать пылинки внутри лучей (основной прожектор и лампы); seed — кадр."""
+    import random
+    rnd = random.Random(seed)
+    sources = [SPOT_MAIN] + [((x, y - 0.45, z - 0.5), (x * 0.25, -0.6, 0.0)) for x, y, z in LAMPS]
+    for i in range(N_DUST):
+        pos, tgt = sources[0] if i < N_DUST // 2 else sources[1 + i % 2]
+        p, t = Vector(pos), Vector(tgt)
+        k = rnd.uniform(0.45, 0.92)               # где вдоль луча
+        c = p.lerp(t, k)
+        spread = (t - p).length * k * 0.14        # ширина конуса на этом расстоянии
+        ob = bpy.data.objects[f"dust{i}"]
+        ob.location = (c.x + rnd.uniform(-spread, spread), c.y + rnd.uniform(-spread, spread),
+                       max(0.2, c.z + rnd.uniform(-spread, spread)))
+        ob.rotation_euler = (rnd.uniform(0, 3), rnd.uniform(0, 3), rnd.uniform(0, 3))
+        s = rnd.choice((0.7, 1.0, 1.4))
+        ob.scale = (s, s, s)

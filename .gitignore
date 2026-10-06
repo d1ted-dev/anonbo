@@ -1,3 +1,6 @@
 renders/dance_frames/
 blocks/
 __pycache__/
+*.blend
+*.blend1
+*_audio.wav
