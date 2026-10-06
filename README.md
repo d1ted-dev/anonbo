@@ -4,7 +4,9 @@
 
 | Вариант | Файл |
 |---|---|
-| Сияние (ближе всего к оригиналу) | `renders/glow.png` |
+| **Финал: крупный план** | `renders/closeup_final.png` |
+| **Финал: шествие** | `renders/march_final.png` |
+| Сияние (ранний вариант) | `renders/glow.png` |
 | Мультяшный контур (Freestyle) | `renders/cartoon.png` |
 | Шествие сбоку, отражающий пол (`--style bright`) | `renders/march.png` |
 | Крупный план (`--style bright`) | `renders/closeup.png` |
@@ -24,3 +26,17 @@ python3 blender/post.py renders/raw/glow.png renders/raw/glow.json renders/glow.
 Варианты: `glow`, `cartoon`, `march`, `closeup`. Другой скин — любой PNG 64×64
 (`--model classic` для широких рук). Позы, цвета и камеры — в `POSES`, `LOOKS`,
 `VARIANTS` в `blender/scene.py`.
+
+### Финальные версии
+
+```bash
+for v in closeup march; do
+  python3 blender/scene.py --skin skins/4ered1t.png --variant $v --style bright --shell \
+      --out renders/raw/${v}_final.png --mask renders/raw/${v}_final_mask.png \
+      --mask-prev renders/raw/${v}_final_mprev.png --meta renders/raw/${v}_final.json \
+      --samples 128 --res 1920
+  python3 blender/post.py renders/raw/${v}_final.png renders/raw/${v}_final.json \
+      renders/${v}_final.png bright renders/raw/${v}_final_mask.png holo-skin \
+      renders/raw/${v}_final_mprev.png
+done
+```
