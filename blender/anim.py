@@ -265,7 +265,7 @@ def set_pose(tag, p):
         o[f"{tag}_{name}_pivot"].rotation_euler = (r(a), r(b), 0)
 
 
-def build_scene(left_skin, right_skin, res, samples, stage=None, layers3d=True):
+def build_scene(left_skin, right_skin, res, samples, stage=None, layers3d=False):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     neutral = dict(head=(0, 0, 0), body_pitch=0, arm_r=(0, 0), arm_l=(0, 0), leg_r=(0, 0), leg_l=(0, 0))
@@ -450,14 +450,14 @@ def main(argv):
     ap.add_argument("--stage", help="папка с текстурами блоков — сцена из блоков Minecraft")
     ap.add_argument("--export-blend", dest="export_blend",
                     help="вместо рендера сохранить .blend с анимацией (для рендера на своей видеокарте)")
-    ap.add_argument("--flat-layers", action="store_true",
-                    help="плоский верхний слой (без эффекта 3D Skin Layers)")
+    ap.add_argument("--layers3d", action="store_true",
+                    help="объёмный верхний слой скина, как в моде 3D Skin Layers (по умолчанию выкл.)")
     ap.add_argument("--reuse", action="store_true", help="не перерендеривать уже готовые кадры")
     a = ap.parse_args(argv)
 
     os.makedirs(a.frames, exist_ok=True)
     tl = timeline()
-    sc = build_scene(a.left, a.right, a.res, a.samples, a.stage, not a.flat_layers)
+    sc = build_scene(a.left, a.right, a.res, a.samples, a.stage, a.layers3d)
     only = set(a.only.split(",")) if a.only else None
     if a.export_blend:
         export_blend(a.export_blend, sc, tl, a.stage, a.audio)
