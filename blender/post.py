@@ -144,7 +144,7 @@ def main(src, meta, dst, style="soft", mask=None, shell="holo", mask_prev=None):
         elif shell == "holo-skin":  # свечение слабее — скин хорошо видно
             im = holo_shell(im, mask, strength=0.14, lift=0.0, white=0.45)
             if mask_prev:  # отсвет тех же цветов на прошлой версии, но слабее
-                im = holo_shell(im, mask_prev, strength=0.22, lift=0.08, white=0.42, toward_right=True)
+                im = holo_shell(im, mask_prev, strength=0.16, lift=0.05, white=0.32, toward_right=True)
         elif shell == "holo-mid":
             im = holo_shell(im, mask, strength=0.18, lift=0.05, white=0.65)
         elif shell == "holo-strong":
