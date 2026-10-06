@@ -352,7 +352,15 @@ def main(argv):
 
     gx, gy = spots[3]
     # свет исходит от сияющей фигуры и гаснет к дальним
-    if bright:
+    if a.shell:
+        # свет идёт изнутри счастливой фигуры (она сама тени не отбрасывает) —
+        # пастельные розовый и тёплый жёлтый, освещают прошлую версию за ней
+        for ob in sc.objects:
+            if ob.type == "MESH" and ob.name.startswith("c3_"):
+                ob.visible_shadow = False
+        light("POINT", (gx - 0.15, gy + 0.05, 1.65), 200, (1.0, 0.5, 0.78), 0.35)
+        light("POINT", (gx - 0.15, gy + 0.05, 0.95), 150, (1.0, 0.85, 0.4), 0.35)
+    elif bright:
         light("POINT", (gx - 0.9, gy - 0.6, 1.4), 260, (1.0, 0.85, 0.92), 0.6)
     else:
         light("POINT", (gx - 0.5, gy - 0.9, 1.5), 150, (1.0, 0.85, 0.92), 0.6)
