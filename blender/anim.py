@@ -265,7 +265,7 @@ def set_pose(tag, p):
         o[f"{tag}_{name}_pivot"].rotation_euler = (r(a), r(b), 0)
 
 
-def build_scene(left_skin, right_skin, res, samples):
+def build_scene(left_skin, right_skin, res, samples, stage=None):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     neutral = dict(head=(0, 0, 0), body_pitch=0, arm_r=(0, 0), arm_l=(0, 0), leg_r=(0, 0), leg_l=(0, 0))
@@ -276,35 +276,45 @@ def build_scene(left_skin, right_skin, res, samples):
         mo = make_material(f"{tag}_mo", img, (1, 1, 1), 0.0, 1.0, 0.0)
         build_character(tag, img, True, m, mo, neutral, (0, 0, 0), 0)
 
-    # светлый «бумажный» фон, мягкие тени на полу
     world = bpy.data.worlds.new("w"); sc.world = world
     world.use_nodes = True
     bg = world.node_tree.nodes["Background"]
-    bg.inputs["Color"].default_value = (0.96, 0.955, 0.95, 1)
-    bg.inputs["Strength"].default_value = 1.0
-    bpy.ops.mesh.primitive_plane_add(size=200)
-    bpy.context.active_object.is_shadow_catcher = True
-
-    def area(loc, energy, size, target, color=(1, 1, 1)):
-        ld = bpy.data.lights.new("a" + str(len(bpy.data.lights)), "AREA")
-        ld.energy, ld.size, ld.color = energy, size, color
-        ob = bpy.data.objects.new(ld.name, ld); ob.location = loc
-        sc.collection.objects.link(ob); look_at(ob, target)
-
-    area((-3.5, -6, 6), 600, 4, (0, 0, 1))
-    area((5, -4, 3), 150, 5, (0, 0, 1), (0.9, 0.93, 1.0))
-
-    cam_d = bpy.data.cameras.new("cam"); cam_d.lens = 85
-    cam = bpy.data.objects.new("cam", cam_d); cam.location = (0, -11.0, 1.45)
+    cam_d = bpy.data.cameras.new("cam")
+    cam = bpy.data.objects.new("cam", cam_d)
     sc.collection.objects.link(cam); sc.camera = cam
-    look_at(cam, (0, 0, 1.0))
+
+    if stage:
+        # сцена из блоков Minecraft со сценическим светом
+        from stage import build_stage
+        build_stage(stage)
+        cam_d.lens = 58
+        cam.location = (0, -9.2, 2.0)
+        look_at(cam, (0, 0.4, 1.15))
+    else:
+        # светлый «бумажный» фон, мягкие тени на полу
+        bg.inputs["Color"].default_value = (0.96, 0.955, 0.95, 1)
+        bg.inputs["Strength"].default_value = 1.0
+        bpy.ops.mesh.primitive_plane_add(size=200)
+        bpy.context.active_object.is_shadow_catcher = True
+
+        def area(loc, energy, size, target, color=(1, 1, 1)):
+            ld = bpy.data.lights.new("a" + str(len(bpy.data.lights)), "AREA")
+            ld.energy, ld.size, ld.color = energy, size, color
+            ob = bpy.data.objects.new(ld.name, ld); ob.location = loc
+            sc.collection.objects.link(ob); look_at(ob, target)
+
+        area((-3.5, -6, 6), 600, 4, (0, 0, 1))
+        area((5, -4, 3), 150, 5, (0, 0, 1), (0.9, 0.93, 1.0))
+        cam_d.lens = 85
+        cam.location = (0, -11.0, 1.45)
+        look_at(cam, (0, 0, 1.0))
 
     sc.render.engine = "CYCLES"
     sc.cycles.device = "CPU"
     sc.cycles.samples = samples
     sc.cycles.use_denoising = True
     sc.render.resolution_x = sc.render.resolution_y = res
-    sc.view_settings.view_transform = "Standard"  # белый фон как бумага
+    sc.view_settings.view_transform = "AgX" if stage else "Standard"  # белый фон как бумага
     sc.render.image_settings.file_format = "PNG"
     return sc
 
@@ -319,12 +329,13 @@ def main(argv):
     ap.add_argument("--res", type=int, default=1080)
     ap.add_argument("--samples", type=int, default=48)
     ap.add_argument("--only", help="отрендерить только эти ключи поз (через запятую)")
+    ap.add_argument("--stage", help="папка с текстурами блоков — сцена из блоков Minecraft")
     ap.add_argument("--reuse", action="store_true", help="не перерендеривать уже готовые кадры")
     a = ap.parse_args(argv)
 
     os.makedirs(a.frames, exist_ok=True)
     tl = timeline()
-    sc = build_scene(a.left, a.right, a.res, a.samples)
+    sc = build_scene(a.left, a.right, a.res, a.samples, a.stage)
     only = set(a.only.split(",")) if a.only else None
 
     done = set()
