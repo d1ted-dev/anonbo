@@ -64,7 +64,53 @@ def rainbow_shell(im, mask_path):
     return Image.fromarray((np.clip(a, 0, 1) * 255).astype(np.uint8))
 
 
-def main(src, meta, dst, style="soft", mask=None):
+def holo_shell(im, mask_path, strength=0.2, lift=0.14):
+    """Голографический перелив по всей фигуре + толстое белое свечение с лёгким цветным отливом."""
+    W, H = im.size
+    u = W / 1920
+    mask = Image.open(mask_path).convert("L").resize(im.size)
+    m = np.asarray(mask, np.float32) / 255
+    ys, xs = np.nonzero(m > 0.5)
+    x0, x1, y0, y1 = xs.min(), xs.max(), ys.min(), ys.max()
+
+    def grow(r, blur):
+        k = max(3, int(r * u) | 1)
+        g = mask.filter(ImageFilter.MaxFilter(k))
+        return np.asarray(g.filter(ImageFilter.GaussianBlur(blur * u)), np.float32) / 255
+
+    def shrink(r):
+        k = max(3, int(r * u) | 1)
+        return np.asarray(mask.filter(ImageFilter.MinFilter(k)), np.float32) / 255
+
+    yy, xx = np.mgrid[0:H, 0:W]
+    # диагональ: розовый слева сверху → персиково-жёлтый → бирюзовый справа снизу
+    t = np.clip(((xx - x0) / (x1 - x0 + 1) * 0.55 + (yy - y0) / (y1 - y0 + 1) * 0.45), 0, 1)
+    hue = np.interp(t, [0, 0.3, 0.55, 0.8, 1], [-0.07, 0.03, 0.14, 0.3, 0.48]) % 1
+    holo = hsv_to_rgb(hue, np.full_like(hue, 0.42), np.ones_like(hue))
+    holo_weak = hsv_to_rgb(hue, np.full_like(hue, 0.22), np.ones_like(hue))
+
+    a = np.asarray(im, np.float32) / 255
+    mi = m[..., None]
+    # внутри фигуры: окрасить переливом умножением (детали скина остаются) и чуть осветлить
+    tint = hsv_to_rgb(hue, np.full_like(hue, strength), np.ones_like(hue))
+    inner = a * tint
+    inner = inner + (1 - inner) * lift
+    a = a * (1 - mi) + inner * mi
+    # кромка внутри силуэта светлеет (как свечение изнутри)
+    rim_in = np.clip(m - shrink(9), 0, 1)
+    rim_in = np.asarray(Image.fromarray((rim_in * 255).astype(np.uint8))
+                        .filter(ImageFilter.GaussianBlur(3 * u)), np.float32)[..., None] / 255 * mi
+    a = 1 - (1 - a) * (1 - holo_weak * rim_in * 0.75)
+    # толстое белое свечение снаружи + широкий мягкий ореол
+    out = 1 - mi
+    band = grow(16, 5)[..., None] * out
+    a = a * (1 - band * 0.9) + holo_weak * band * 0.9
+    halo = grow(20, 34)[..., None] * out * 0.55
+    a = 1 - (1 - a) * (1 - halo * holo_weak)
+    return Image.fromarray((np.clip(a, 0, 1) * 255).astype(np.uint8))
+
+
+def main(src, meta, dst, style="soft", mask=None, shell="holo"):
     bright = style == "bright"
     im = Image.open(src).convert("RGB")
     W, H = im.size
@@ -87,7 +133,12 @@ def main(src, meta, dst, style="soft", mask=None):
     im = ImageChops.screen(im, glow)
 
     if mask:
-        im = rainbow_shell(im, mask)
+        if shell == "neon":
+            im = rainbow_shell(im, mask)
+        elif shell == "holo-strong":
+            im = holo_shell(im, mask, strength=0.32, lift=0.2)
+        else:
+            im = holo_shell(im, mask)
     # мягкий розово-белый ореол вокруг сияющей фигуры
     halo = Image.new("RGB", im.size)
     d = ImageDraw.Draw(halo)
@@ -124,4 +175,4 @@ def main(src, meta, dst, style="soft", mask=None):
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:6])
+    main(*sys.argv[1:7])
