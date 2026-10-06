@@ -434,10 +434,92 @@ def export_blend(path, sc, tl, stage, audio):
     except (AttributeError, TypeError) as e:
         print("ffmpeg output not set:", e)
     sc.render.filepath = "//render/dance_"
+    add_fast_render_script(tl)
     sc.frame_set(1)
     bpy.ops.file.pack_all()
     bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(path), compress=True)
     print("blend", path, flush=True)
+
+
+FAST_SCRIPT = r'''"""Быстрый рендер: только уникальные позы (покадровая анимация держит каждую позу
+несколько кадров), потом сборка mp4 со звуком прямо в Blender.
+
+Запуск: вкладка Scripting -> этот текст -> Run Script (Alt+P). Результат: render/dance_fast.mp4
+"""
+import os
+import bpy
+
+SEGS = __SEGS__   # (первый кадр, длительность, ключ позы)
+
+sc = bpy.data.scenes["__SCENE__"]
+out = bpy.path.abspath("//render/frames/")
+os.makedirs(out, exist_ok=True)
+
+media = sc.render.image_settings.media_type
+sc.render.image_settings.media_type = "IMAGE"
+sc.render.image_settings.file_format = "PNG"
+files = []    # (кадр, длительность, путь)
+done = {}
+for start, dur, key in SEGS:
+    if key == "fade":      # затемнение в конце — каждый кадр отдельно
+        for k in range(dur):
+            path = os.path.join(out, "fade%02d.png" % k)
+            if not os.path.exists(path):
+                sc.frame_set(start + k)
+                sc.render.filepath = path
+                bpy.ops.render.render(write_still=True)
+            files.append((start + k, 1, path))
+        continue
+    path = os.path.join(out, key + ".png")
+    if key not in done and not os.path.exists(path):
+        sc.frame_set(start)
+        sc.render.filepath = path
+        bpy.ops.render.render(write_still=True)
+    done[key] = path
+    files.append((start, dur, path))
+sc.render.image_settings.media_type = media
+
+# сборка в отдельной сцене через видеоредактор
+asm = bpy.data.scenes.get("Assemble") or bpy.data.scenes.new("Assemble")
+asm.render.resolution_x, asm.render.resolution_y = sc.render.resolution_x, sc.render.resolution_y
+asm.render.resolution_percentage = sc.render.resolution_percentage
+asm.render.fps = sc.render.fps
+asm.frame_start, asm.frame_end = sc.frame_start, sc.frame_end
+asm.view_settings.view_transform = "Standard"
+se = asm.sequence_editor_create()
+for s in list(se.strips):
+    se.strips.remove(s)
+for i, (start, dur, path) in enumerate(files):
+    st = se.strips.new_image("f%03d" % i, path, 1, start)
+    st.frame_final_duration = dur
+for s in sc.sequence_editor.strips if sc.sequence_editor else []:
+    if s.type == "SOUND":
+        wav = os.path.join(out, "audio.wav")
+        if s.sound.packed_file:
+            open(wav, "wb").write(s.sound.packed_file.data)
+        se.strips.new_sound("music", wav, 2, int(s.frame_start))
+asm.render.image_settings.media_type = "VIDEO"
+asm.render.image_settings.file_format = "FFMPEG"
+asm.render.ffmpeg.format = "MPEG4"
+asm.render.ffmpeg.codec = "H264"
+asm.render.ffmpeg.constant_rate_factor = "HIGH"
+asm.render.ffmpeg.audio_codec = "AAC"
+asm.render.use_sequencer = True
+asm.render.filepath = "//render/dance_fast.mp4"
+bpy.ops.render.render(animation=True, scene=asm.name)
+print("готово:", bpy.path.abspath(asm.render.filepath))
+'''
+
+
+def add_fast_render_script(tl):
+    segs, frame = [], 1
+    for i, (key, poses, dur) in enumerate(tl):
+        k = "fade" if i == FADE_SEG else ("black" if poses is None else key)
+        segs.append((frame, dur, k))
+        frame += dur
+    src = FAST_SCRIPT.replace("__SEGS__", repr(segs)).replace("__SCENE__", bpy.context.scene.name)
+    txt = bpy.data.texts.new("render_fast.py")
+    txt.write(src)
 
 
 def main(argv):

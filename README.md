@@ -52,3 +52,6 @@ python3 blender/anim.py --left skins/friend.png --right skins/4ered1t.png \
 
 В `dance.blend`: 734 кадра, 30 fps, Cycles GPU 256 сэмплов, OIDN, bloom в композитинге,
 вывод `//render/dance_*.mp4` со звуком. Render → Render Animation (Ctrl+F12).
+
+Быстрее: Scripting → текст `render_fast.py` → Run Script — рендерит только уникальные позы
+(~120 кадров вместо 734) и сам собирает `//render/dance_fast.mp4` со звуком.
