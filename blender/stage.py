@@ -211,11 +211,8 @@ def polish(sc):
     rl = ng.nodes.new("CompositorNodeRLayers")
     glare = ng.nodes.new("CompositorNodeGlare")
     out = ng.nodes.new("NodeGroupOutput")
-    for prop, val in (("glare_type", "BLOOM"), ("quality", "HIGH")):
-        try:
-            setattr(glare, prop, val)
-        except (AttributeError, TypeError):
-            pass
+    from scene import set_bloom
+    set_bloom(glare)
     for sock, val in (("Threshold", 1.2), ("Strength", 0.45), ("Size", 0.6)):
         if sock in glare.inputs:
             glare.inputs[sock].default_value = val

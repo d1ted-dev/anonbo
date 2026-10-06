@@ -6,6 +6,7 @@
 """
 import argparse
 import math
+import os
 import sys
 
 import bpy
@@ -361,6 +362,11 @@ def main(argv):
     ap.add_argument("--mask-prev", dest="mask_prev",
                     help="маска прошлой версии (на неё ложится отсвет счастливой)")
     ap.add_argument("--meta", help="куда записать экранные координаты сияющей головы")
+    ap.add_argument("--solo", type=int, choices=[0, 1, 2, 3],
+                    help="только одна стадия (0 — самая грустная, 3 — счастливая), по центру кадра")
+    ap.add_argument("--portrait", action="store_true", help="вертикальный кадр 9:16, как экран телефона")
+    ap.add_argument("--save-blend", dest="save_blend",
+                    help="сохранить сцену в .blend (звёзды, месяц и свечение — прямо в 3D/композитинге)")
     a = ap.parse_args(argv)
     cfg = dict(VARIANTS[a.variant])
     bright = a.style == "bright"
@@ -385,7 +391,14 @@ def main(argv):
         # первые две — бледные сине-лиловые, но читаются (как в оригинале)
         looks[0] = ((0.42, 0.45, 1.0), 0.9, 0.8, 0.0)
         looks[1] = ((0.45, 0.52, 1.0), 0.8, 0.85, 0.0)
+    if a.solo is not None:
+        # одна стадия по центру; камера смотрит на неё так же, как на крупном плане
+        spots = [(0.0, 0.0)] * 4
+        off = Vector(cfg["cam"]) - Vector(cfg["target"])
+        cfg.update(target=(0.0, 0.1, 1.42), cam=tuple(Vector((0.0, 0.1, 1.42)) + off * 0.95))
     for i, (pose, (tint, amt, br, glow), (x, y)) in enumerate(zip(POSES, looks, spots)):
+        if a.solo is not None and i != a.solo:
+            continue
         lw = 0.42 if bright else 0.32
         if a.shell and glow > 0:
             m = mo = make_rainbow_material(f"rb{i}", img)
@@ -417,7 +430,13 @@ def main(argv):
 
     gx, gy = spots[3]
     # свет исходит от сияющей фигуры и гаснет к дальним
-    if a.shell:
+    if a.solo is not None and a.solo < 3:
+        # грустные стадии: только холодный свет; на третьей — первый тёплый отсвет справа
+        light("AREA", (-1.5, -4.0, 3.0), 170, (0.55, 0.6, 1.0), 4, (0, 0, 1.2))
+        if a.solo == 2:
+            light("POINT", (1.3, -0.6, 1.6), 90, (1.0, 0.55, 0.78), 0.4)
+            light("POINT", (1.3, -0.6, 0.9), 60, (1.0, 0.85, 0.45), 0.4)
+    elif a.shell:
         # свет идёт изнутри счастливой фигуры (она сама тени не отбрасывает) —
         # пастельные розовый и тёплый жёлтый, освещают прошлую версию за ней
         for ob in sc.objects:
@@ -446,6 +465,13 @@ def main(argv):
         fl.data.materials.append(fm)
         fl.is_shadow_catcher = not bright  # soft: без видимой линии горизонта
 
+    if a.solo is not None:
+        # одинаковое кадрирование всех стадий: по голове и груди фигуры, по пояс
+        bpy.context.view_layer.update()
+        hd = bpy.data.objects[f"c{a.solo}_head"].matrix_world @ Vector((0, 0, 4 * PX))
+        tgt = Vector((hd.x, hd.y, hd.z - (0.62 if a.portrait else 0.42)))
+        off = (Vector(VARIANTS["closeup"]["cam"]) - Vector(VARIANTS["closeup"]["target"]))
+        cfg.update(target=tuple(tgt), cam=tuple(tgt + off * (1.0 if a.portrait else 0.85)))
     cam_d = bpy.data.cameras.new("cam"); cam_d.lens = cfg["lens"]
     cam = bpy.data.objects.new("cam", cam_d); cam.location = cfg["cam"]
     sc.collection.objects.link(cam); sc.camera = cam
@@ -457,6 +483,8 @@ def main(argv):
     sc.cycles.use_denoising = True
     sc.render.resolution_x = a.res
     sc.render.resolution_y = int(a.res * 9 / 16)
+    if a.portrait:
+        sc.render.resolution_x, sc.render.resolution_y = int(a.res * 9 / 16), a.res
     sc.render.film_transparent = False
     sc.view_settings.view_transform = "AgX"
     sc.view_settings.look = "AgX - Medium High Contrast"
@@ -522,6 +550,120 @@ def main(argv):
         feet = world_to_camera_view(sc, cam, bpy.data.objects["c3_root"].matrix_world.translation)
         json.dump({"head": [p.x, 1 - p.y], "top": [top.x, 1 - top.y], "feet": [feet.x, 1 - feet.y]},
                   open(a.meta, "w"))
+
+    if a.save_blend:
+        save_blend(a.save_blend, sc, cam, a.res)
+
+
+def _star_mesh(name, r, thin=0.16):
+    verts = []
+    for i in range(8):
+        ang = math.pi / 2 * (i // 2) + (math.pi / 4 if i % 2 else 0)
+        rad = r if i % 2 == 0 else r * thin
+        verts.append((rad * math.cos(ang), 0, rad * math.sin(ang)))
+    verts.append((0, 0, 0))
+    faces = [(8, i, (i + 1) % 8) for i in range(8)]
+    me = bpy.data.meshes.new(name)
+    me.from_pydata(verts, [], faces)
+    return me
+
+
+def _moon_mesh(name, r):
+    """Месяц-серп: часть большого круга вне смещённого круга (открыт вправо-вверх)."""
+    cx, cz, ri = 0.42 * r, 0.28 * r, 0.82 * r      # центр и радиус «откусывающего» круга
+
+    def inside_inner(x, z):
+        return (x - cx) ** 2 + (z - cz) ** 2 < ri ** 2
+
+    n = 96
+    outer = [(r * math.cos(2 * math.pi * k / n), r * math.sin(2 * math.pi * k / n)) for k in range(n)]
+    keep = [not inside_inner(x, z) for x, z in outer]
+    start = next(k for k in range(n) if keep[k] and not keep[k - 1])   # начало видимой дуги
+    arc = []
+    k = start
+    while keep[k % n]:
+        arc.append(outer[k % n]); k += 1
+    # внутренняя дуга от конца внешней обратно к началу, по «откусывающему» кругу
+    a0 = math.atan2(arc[-1][1] - cz, arc[-1][0] - cx)
+    a1 = math.atan2(arc[0][1] - cz, arc[0][0] - cx)
+    while a1 > a0:
+        a1 -= 2 * math.pi
+    inner = [(cx + ri * math.cos(a0 + (a1 - a0) * t / 40), cz + ri * math.sin(a0 + (a1 - a0) * t / 40))
+             for t in range(1, 40)]
+    pts = arc + inner
+    verts = [(x, 0, z) for x, z in pts]
+    me = bpy.data.meshes.new(name)
+    me.from_pydata(verts, [], [tuple(range(len(verts)))])
+    return me
+
+
+def set_bloom(glare):
+    """Мягкий bloom. В Blender 5 тип задаётся входом Type (по умолчанию Streaks — лучи)."""
+    if "Type" in glare.inputs:
+        glare.inputs["Type"].default_value = "Bloom"
+        if "Quality" in glare.inputs:
+            glare.inputs["Quality"].default_value = "High"
+    else:
+        glare.glare_type = "BLOOM"
+
+
+def save_blend(path, sc, cam, res):
+    """Сохранить сцену: звёздочки и месяц — светящиеся плоскости у головы счастливой,
+    bloom в композитинге, рендер под GPU, скин упакован."""
+    head = bpy.data.objects.get("c3_head")
+    if head is not None:
+        em = bpy.data.materials.new("sparkle")
+        em.use_nodes = True
+        b = em.node_tree.nodes["Principled BSDF"]
+        b.inputs["Base Color"].default_value = (1, 1, 1, 1)
+        b.inputs["Emission Color"].default_value = (1, 0.97, 0.92, 1)
+        b.inputs["Emission Strength"].default_value = 12.0
+        hc = head.matrix_world @ Vector((0, 0, 4 * PX))
+        # плоскости ставим в плоскость камеры: вправо и вверх от головы
+        right = cam.matrix_world.to_3x3() @ Vector((1, 0, 0))
+        up = cam.matrix_world.to_3x3() @ Vector((0, 1, 0))
+        s = 0.28
+        for i, (dx, dy, r) in enumerate([(-0.9, -2.2, 0.4), (1.7, -1.9, 0.62), (2.4, 1.4, 0.3),
+                                         (2.0, 5.6, 0.3), (2.8, 3.6, 0.22), (0.4, -3.1, 0.18)]):
+            ob = bpy.data.objects.new(f"sparkle{i}", _star_mesh(f"sparkle{i}", r * s))
+            ob.location = hc + right * dx * s - up * dy * s
+            ob.rotation_euler = cam.rotation_euler.copy()
+            ob.rotation_euler.rotate_axis("X", -math.pi / 2)
+            ob.data.materials.append(em)
+            ob.visible_shadow = False
+            sc.collection.objects.link(ob)
+        moon = bpy.data.objects.new("moon", _moon_mesh("moon", 0.6 * s))
+        moon.location = hc + right * 2.5 * s + up * 0.6 * s
+        moon.rotation_euler = cam.rotation_euler.copy()
+        moon.rotation_euler.rotate_axis("X", -math.pi / 2)
+        moon.data.materials.append(em)
+        moon.visible_shadow = False
+        sc.collection.objects.link(moon)
+    ng = bpy.data.node_groups.new("Finish", "CompositorNodeTree")
+    ng.interface.new_socket("Image", in_out="OUTPUT", socket_type="NodeSocketColor")
+    rl = ng.nodes.new("CompositorNodeRLayers")
+    glare = ng.nodes.new("CompositorNodeGlare")
+    out = ng.nodes.new("NodeGroupOutput")
+    set_bloom(glare)
+    for sock, val in (("Threshold", 1.0), ("Strength", 0.55), ("Size", 0.55)):
+        if sock in glare.inputs:
+            glare.inputs[sock].default_value = val
+    ng.links.new(rl.outputs["Image"], glare.inputs["Image"])
+    ng.links.new(glare.outputs["Image"], out.inputs[0])
+    sc.compositing_node_group = ng
+    sc.render.use_compositing = True
+    sc.cycles.device = "GPU"
+    sc.cycles.samples = 256
+    sc.cycles.use_adaptive_sampling = True
+    sc.cycles.denoiser = "OPENIMAGEDENOISE"
+    if sc.render.resolution_x < sc.render.resolution_y:
+        sc.render.resolution_x, sc.render.resolution_y = 1080, 1920
+    else:
+        sc.render.resolution_x, sc.render.resolution_y = 1920, 1080
+    sc.render.filepath = "//render/stage.png"
+    bpy.ops.file.pack_all()
+    bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(path), compress=True)
+    print("blend", path, flush=True)
 
 
 if __name__ == "__main__":
