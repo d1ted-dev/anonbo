@@ -111,31 +111,59 @@ def spin(phi, step=0):
     d = (math.cos(math.radians(phi)), math.sin(math.radians(phi)))
     yaw_l = math.degrees(math.atan2(d[0], -d[1]))
     yaw_r = math.degrees(math.atan2(-d[0], d[1]))
-    s1, s2 = (-24, 18) if step % 2 == 0 else (18, -24)  # шаг: ноги в разные стороны по очереди
-    hop = 0.07 if step % 2 else 0.0                      # лёгкие подпрыгивания
-    out = 58 if step % 2 else 70                         # свободная рука в сторону
+    if step % 2 == 0:   # толчок: опорная нога, вторая отлетает назад, рука вверх
+        s1, s2, hop, out, lean = (-30, 0), (42, 0), 0.0, 100, -16
+    else:               # полёт: подпрыгнули, ноги разведены, рука в сторону
+        s1, s2, hop, out, lean = (24, 6), (-26, -6), 0.12, 72, -12
     # держатся одной рукой (у L — левая, у R — правая), вторая отведена в сторону
-    return (P(-SPIN_R * d[0], -SPIN_R * d[1], yaw=yaw_l, z=hop, body=(-10, 0, 0), head=(-8, 0, 6),
-              al=(-80, 4), ar=(-10, out), lr=(s1, 0), ll=(s2, 0)),
-            P(SPIN_R * d[0], SPIN_R * d[1], yaw=yaw_r, z=hop, body=(-10, 0, 0), head=(-8, 0, -6),
-              ar=(-80, -4), al=(-10, -out), lr=(s2, 0), ll=(s1, 0)))
+    L = P(-SPIN_R * d[0], -SPIN_R * d[1], yaw=yaw_l, z=hop, body=(lean, 6, 8), head=(-12, 8, 10),
+          al=(-82, 4), ar=(-15, out), lr=s1, ll=s2)
+    R = P(SPIN_R * d[0], SPIN_R * d[1], yaw=yaw_r, z=hop, body=(lean, -6, -8), head=(-12, -8, -10),
+          ar=(-82, -4), al=(-15, -out), lr=(s2[0], -s2[1]), ll=(s1[0], -s1[1]))
+    L["hold"], R["hold"] = "al", "ar"
+    return L, R
 
 
 def wide(kind):
     """В стороны, держатся внутренними руками; kind: 'a' — стоят, 'kick' — пинок внутрь, 'b'."""
-    out = {"a": 68, "kick": 62, "b": 56}[kind]
-    if kind == "kick":
-        legs_l = dict(lr=(0, 8), ll=(-14, -48))
-        legs_r = dict(lr=(-14, 48), ll=(0, -8))
-        lean = 6
-    else:
-        legs_l = dict(lr=(0, 12), ll=(0, -12))
-        legs_r = dict(lr=(0, 12), ll=(0, -12))
-        lean = 0
+    out = {"a": 78, "kick": 105, "b": 55}[kind]
+    if kind == "kick":   # высокий пинок навстречу, корпус отклоняется, лёгкий подскок
+        legs_l = dict(lr=(0, 10), ll=(-30, -62))
+        legs_r = dict(lr=(-30, 62), ll=(0, -10))
+        lean, hop = 12, 0.05
+    elif kind == "a":    # вес на внешней ноге
+        legs_l = dict(lr=(0, 6), ll=(-8, -20))
+        legs_r = dict(lr=(-8, 20), ll=(0, -6))
+        lean, hop = -5, 0.0
+    else:                # вес на внутренней ноге, внешняя отставлена
+        legs_l = dict(lr=(10, 24), ll=(0, -4))
+        legs_r = dict(lr=(0, 4), ll=(10, -24))
+        lean, hop = 6, 0.0
     # корпус развёрнут к партнёру, голова ещё сильнее — смотрят друг на друга, а не в камеру
     turn, look = 35, 30
-    return (P(-0.92, yaw=turn, al=(0, -86), ar=(0, out), body=(0, lean, 0), head=(0, 4, look), **legs_l),
-            P(0.92, yaw=-turn, ar=(0, 86), al=(0, -out), body=(0, -lean, 0), head=(0, -4, -look), **legs_r))
+    L = P(-0.92, yaw=turn, z=hop, al=(0, -86), ar=(0, out), body=(0, lean, 0), head=(0, 6, look), **legs_l)
+    R = P(0.92, yaw=-turn, z=hop, ar=(0, 86), al=(0, -out), body=(0, -lean, 0), head=(0, -6, -look), **legs_r)
+    L["hold"], R["hold"] = "al", "ar"
+    return L, R
+
+
+def liven(pair, seed):
+    """Каждый повтор чуть другой: кивки, наклоны, взмах свободной рукой. Сцепленные руки не трогаем."""
+    import random
+    rnd = random.Random(seed)
+    out = []
+    for p in pair:
+        p = dict(p)
+        j = lambda a: rnd.uniform(-a, a)  # noqa: E731
+        p["head"] = (p["head"][0] + j(10), p["head"][1] + j(10), p["head"][2] + j(10))
+        p["body"] = (p["body"][0] + j(4), p["body"][1] + j(4), p["body"][2] + j(6))
+        free = "ar" if p.get("hold") == "al" else "al"
+        sign = 1 if free == "ar" else -1
+        p[free] = (p[free][0] + j(25), p[free][1] + sign * j(18))
+        if p["z"]:
+            p["z"] = max(0.0, p["z"] + j(0.04))
+        out.append(p)
+    return tuple(out)
 
 
 CYCLE = ["close", "single", "close", "wide-a", "wide-kick", "wide-b"]
@@ -184,12 +212,12 @@ def timeline():
         if kind == "spin":
             phi = base + phase
             step += 1
-            out.append((f"spin{phi % 360:03d}-{step % 2}", spin(phi, step), dur))
+            out.append((f"spin{phi % 360:03d}-s{s:03d}", liven(spin(phi, step), s), dur))
             if phase == 135:
                 base += 180
             continue
         w = kind.split("-")[1]
-        out.append((f"wide-{w}-{base % 360}", wide_pair(w), dur))
+        out.append((f"wide-{w}-{base % 360}-s{s:03d}", liven(wide_pair(w), s), dur))
     return out
 
 
@@ -202,7 +230,7 @@ def set_pose(tag, p):
     lr_ = [abs(p[k][1]) for k in ("lr", "ll")]
     # опорная нога — более вертикальная; опускаем корпус, чтобы стопы стояли на полу
     support = max(math.cos(r(a)) * math.cos(r(b)) for a, b in zip(lp, lr_))
-    z = p["z"] if p["z"] is not None else -LEG * (1 - support)
+    z = -LEG * (1 - support) + (p["z"] or 0.0)  # z позы — подскок над полом
     root = o[f"{tag}_root"]
     root.location = (p["x"], p["y"], z)
     root.rotation_euler = (0, 0, r(p["yaw"]))
