@@ -77,29 +77,30 @@ INTRO = [
     (P(-0.88, yaw=74, body=(10, 0, 0), head=(4, 0, 0), ar=(-72, 0), al=(8, -3), ll=(-18, 0), lr=(10, 0)),
      P(0.86, yaw=-74, body=(42, 0, 0), head=(-10, 0, 0), al=(-82, 0), ar=(24, 4),
        lr=(32, 0), ll=(-22, 0))),
-    # 14 — касание: L мягко тянет к себе, R выпрямляется
-    (P(-0.88, yaw=76, body=(-5, 0, 0), head=(-6, 4, 0), ar=(-60, 0), al=(6, -3), lr=(10, 0)),
+    # 14 — хлопнули по рукам и схватились, L кивает
+    (P(-0.88, yaw=76, body=(2, 0, 0), head=(10, 0, 0), ar=(-64, 0), al=(8, -3)),
      P(0.62, yaw=-76, body=(22, 0, 0), head=(16, 0, 0), al=(-62, 0), ar=(10, 4),
        lr=(14, 0), ll=(-10, 0))),
-    # 15 — держатся за руку, L делает шаг ближе
-    (P(-0.8, yaw=78, body=(2, 0, 0), head=(0, 9, 0), ar=(-45, 0), al=(4, -3), lr=(-12, 0), ll=(8, 0)),
+    # 15 — держатся за руку, L подходит и смеётся (голова назад)
+    (P(-0.8, yaw=78, body=(-4, 0, 0), head=(-14, 0, 0), ar=(-50, 0), al=(6, -3), lr=(-12, 0), ll=(8, 0)),
      P(0.4, yaw=-78, body=(4, 0, 0), head=(4, 0, 0), al=(-45, 0), ar=(6, 3),
        lr=(8, 0), ll=(-6, 0))),
-    # 16 — L подаёт вторую руку
-    (P(-0.72, yaw=80, ar=(-40, 0), al=(-24, 6), head=(-2, 6, 0)),
-     P(0.3, yaw=-80, al=(-40, 0), ar=(-10, -3))),
-    # 17–21 — обе руки, покачиваются вперёд-назад навстречу друг другу
-    (P(-0.65, yaw=82, body=(7, 0, 0), ar=(-38, -6), al=(-38, 6), head=(6, 6, 0), lr=(-8, 0)),
-     P(0.45, yaw=-82, body=(-5, 0, 0), ar=(-46, -6), al=(-46, 6), head=(-4, -4, 0), ll=(8, 0))),
-    (P(-0.67, yaw=82, body=(-5, 0, 0), ar=(-46, -6), al=(-46, 6), head=(-4, -6, 0), ll=(8, 0)),
-     P(0.43, yaw=-82, body=(7, 0, 0), ar=(-38, -6), al=(-38, 6), head=(8, 6, 0), lr=(-8, 0))),
-    (P(-0.64, yaw=82, body=(7, 0, 0), ar=(-38, -6), al=(-38, 6), head=(4, 8, 0), lr=(-8, 0)),
-     P(0.45, yaw=-82, body=(-5, 0, 0), ar=(-46, -6), al=(-46, 6), head=(-2, -6, 0), ll=(8, 0))),
-    # 20 — долгая пауза: стоят близко, склонили головы друг к другу
-    (P(-0.62, yaw=82, body=(3, 0, 0), ar=(-42, -6), al=(-42, 6), head=(6, 10, 0)),
-     P(0.45, yaw=-82, body=(3, 0, 0), ar=(-42, -6), al=(-42, 6), head=(6, -10, 0))),
-    (P(-0.6, yaw=82, ar=(-46, -8), al=(-46, 8), body=(6, 0, 0), lr=(-14, 0), ll=(8, 0)),
-     P(0.42, yaw=-82, ar=(-46, -8), al=(-46, 8), body=(8, 0, 0), head=(8, 0, 0))),
+    # 16 — хватаются второй рукой: «ну что, танцуем?»
+    (P(-0.72, yaw=80, ar=(-50, 0), al=(-50, 0), head=(0, 0, 0)),
+     P(0.3, yaw=-80, al=(-50, 0), ar=(-50, 0), head=(-4, 0, 0))),
+    # 17–19 — по-дружески дурачатся: пружинят и трясут сцепленными руками вверх-вниз
+    (P(-0.68, yaw=82, z=0.05, ar=(-70, -6), al=(-70, 6), head=(-6, 0, 0)),
+     P(0.5, yaw=-82, z=0.05, ar=(-70, -6), al=(-70, 6), head=(-6, 0, 0))),
+    (P(-0.68, yaw=82, ar=(-30, -6), al=(-30, 6), head=(6, 0, 0), lr=(-8, 0), ll=(6, 0)),
+     P(0.5, yaw=-82, ar=(-30, -6), al=(-30, 6), head=(4, 0, 0), lr=(6, 0), ll=(-8, 0))),
+    (P(-0.68, yaw=82, z=0.05, ar=(-68, -6), al=(-68, 6), head=(-10, 0, 0)),
+     P(0.5, yaw=-82, z=0.05, ar=(-68, -6), al=(-68, 6), head=(-4, 0, 0))),
+    # 20 — долгая пауза: стоят на вытянутых руках, смотрят друг на друга
+    (P(-0.7, yaw=82, ar=(-55, -6), al=(-55, 6), head=(0, 0, 0)),
+     P(0.52, yaw=-82, ar=(-55, -6), al=(-55, 6), head=(0, 0, 0))),
+    # 21 — готовятся закружиться: откинулись назад
+    (P(-0.74, yaw=82, ar=(-62, -6), al=(-62, 6), body=(-8, 0, 0), lr=(-14, 0), ll=(8, 0)),
+     P(0.56, yaw=-82, ar=(-62, -6), al=(-62, 6), body=(-8, 0, 0), lr=(8, 0), ll=(-14, 0))),
 ]
 
 
@@ -116,10 +117,12 @@ def spin(phi, step=0):
     hop = 0.07 if step % 2 else 0.0                      # лёгкие подпрыгивания
     out = 58 if step % 2 else 70                         # свободная рука в сторону
     # держатся одной рукой (у L — левая, у R — правая), вторая отведена в сторону
-    return (P(-SPIN_R * d[0], -SPIN_R * d[1], yaw=yaw_l, z=hop, body=(-10, 0, 0), head=(-8, 0, 6),
-              al=(-80, 4), ar=(-10, out), lr=(s1, 0), ll=(s2, 0)),
-            P(SPIN_R * d[0], SPIN_R * d[1], yaw=yaw_r, z=hop, body=(-10, 0, 0), head=(-8, 0, -6),
-              ar=(-80, -4), al=(-10, -out), lr=(s2, 0), ll=(s1, 0)))
+    L = P(-SPIN_R * d[0], -SPIN_R * d[1], yaw=yaw_l, z=hop, body=(-10, 0, 0), head=(-8, 0, 6),
+          al=(-80, 4), ar=(-10, out), lr=(s1, 0), ll=(s2, 0))
+    R = P(SPIN_R * d[0], SPIN_R * d[1], yaw=yaw_r, z=hop, body=(-10, 0, 0), head=(-8, 0, -6),
+          ar=(-80, -4), al=(-10, -out), lr=(s2, 0), ll=(s1, 0))
+    L["hold"], R["hold"] = "al", "ar"
+    return L, R
 
 
 def wide(kind):
@@ -135,8 +138,51 @@ def wide(kind):
         lean = 0
     # корпус развёрнут к партнёру, голова ещё сильнее — смотрят друг на друга, а не в камеру
     turn, look = 35, 30
-    return (P(-0.92, yaw=turn, al=(0, -86), ar=(0, out), body=(0, lean, 0), head=(0, 4, look), **legs_l),
-            P(0.92, yaw=-turn, ar=(0, 86), al=(0, -out), body=(0, -lean, 0), head=(0, -4, -look), **legs_r))
+    L = P(-0.92, yaw=turn, al=(0, -86), ar=(0, out), body=(0, lean, 0), head=(0, 4, look), **legs_l)
+    R = P(0.92, yaw=-turn, ar=(0, 86), al=(0, -out), body=(0, -lean, 0), head=(0, -4, -look), **legs_r)
+    L["hold"], R["hold"] = "al", "ar"
+    if kind == "kick":
+        L["kick"], R["kick"] = "ll", "lr"
+    return L, R
+
+
+# Продуманные (не случайные) небольшие отличия каждого полуоборота, чтобы повторы
+# не выглядели копипастой. Внутри полуоборота вариация одна и та же.
+#   head: (кивок, наклон набок, —) · free: свободная рука (вперёд/назад, выше/ниже)
+#   kick: пинок выше(+)/ниже(−) · body: (наклон вперёд, вбок, поворот)
+VARIATIONS = [
+    dict(),
+    dict(head=(-6, 0, 0), free=(0, 10)),
+    dict(head=(4, 6, 0), body=(0, 0, 4)),
+    dict(free=(10, -12), kick=-10),
+    dict(head=(-4, -5, 0), kick=8, body=(-3, 0, 0)),
+    dict(head=(6, 0, 0), free=(-12, 6)),
+    dict(head=(0, 7, 0), kick=-5, free=(0, 15)),
+    dict(head=(-8, -4, 0), body=(0, 0, -5)),
+]
+
+
+def vary(pair, v):
+    var = VARIATIONS[v % len(VARIATIONS)]
+    out = []
+    for i, p in enumerate(pair):
+        p = dict(p)
+        mirror = 1 if i == 0 else -1   # второй персонаж — зеркально
+        h = var.get("head", (0, 0, 0))
+        p["head"] = (p["head"][0] + h[0], p["head"][1] + mirror * h[1], p["head"][2] + h[2])
+        b = var.get("body", (0, 0, 0))
+        p["body"] = (p["body"][0] + b[0], p["body"][1] + mirror * b[1], p["body"][2] + mirror * b[2])
+        if "free" in var and "hold" in p:
+            free = "ar" if p["hold"] == "al" else "al"
+            sign = 1 if free == "ar" else -1   # «наружу» у правой руки +, у левой −
+            fp, fr = var["free"]
+            p[free] = (p[free][0] + fp, p[free][1] + sign * fr)
+        if "kick" in var and "kick" in p:
+            leg = p["kick"]
+            sign = 1 if leg == "lr" else -1
+            p[leg] = (p[leg][0], p[leg][1] + sign * var["kick"])
+        out.append(p)
+    return tuple(out)
 
 
 CYCLE = ["close", "single", "close", "wide-a", "wide-kick", "wide-b"]
@@ -150,6 +196,7 @@ def timeline():
     out = []
     base = 0      # угол последнего раскрытия «в стороны» (0 — R справа, 180 — R слева)
     step = 0
+    half = 0      # номер полуоборота — выбирает вариацию
 
     def wide_pair(kind):
         a, b = wide(kind)          # (левый в кадре, правый в кадре)
@@ -185,12 +232,15 @@ def timeline():
         if kind == "spin":
             phi = base + phase
             step += 1
-            out.append((f"spin{phi % 360:03d}-{step % 2}", spin(phi, step), dur))
+            v = half % len(VARIATIONS)
+            out.append((f"spin{phi % 360:03d}-{step % 2}-v{v}", vary(spin(phi, step), v), dur))
             if phase == 135:
                 base += 180
+                half += 1
             continue
         w = kind.split("-")[1]
-        out.append((f"wide-{w}-{base % 360}", wide_pair(w), dur))
+        v = half % len(VARIATIONS)
+        out.append((f"wide-{w}-{base % 360}-v{v}", vary(wide_pair(w), v), dur))
     return out
 
 
