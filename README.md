@@ -6,10 +6,11 @@
 |---|---|
 | Сияние (ближе всего к оригиналу) | `renders/glow.png` |
 | Мультяшный контур (Freestyle) | `renders/cartoon.png` |
-| Шествие сбоку, с тенями | `renders/march.png` |
-| Крупный план | `renders/closeup.png` |
+| Шествие сбоку, отражающий пол (`--style bright`) | `renders/march.png` |
+| Крупный план (`--style bright`) | `renders/closeup.png` |
 
-`renders/raw/` — рендеры до постобработки.
+`renders/raw/` — рендеры до постобработки. Для `--style bright` передайте `bright`
+четвёртым аргументом в `post.py`.
 
 ## Как перерендерить
 

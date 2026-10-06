@@ -60,7 +60,7 @@ def box_mesh(name, size, offset, tex, inflate):
     return me
 
 
-def make_material(name, img, tint, tint_amt, brightness, glow):
+def make_material(name, img, tint, tint_amt, brightness, glow, lift_white=0.32):
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     nt = mat.node_tree
@@ -112,7 +112,7 @@ def make_material(name, img, tint, tint_amt, brightness, glow):
         l.new(scale.outputs["Value"], ramp.inputs["Fac"])
         # высветлить текстуру к белому и окрасить пастельным градиентом
         lifted = n.new("ShaderNodeMix"); lifted.data_type = "RGBA"
-        lifted.inputs["Factor"].default_value = 0.32
+        lifted.inputs["Factor"].default_value = lift_white
         lifted.inputs["B"].default_value = (1, 1, 1, 1)
         l.new(texn.outputs["Color"], lifted.inputs["A"])
         pastel = n.new("ShaderNodeMix"); pastel.data_type = "RGBA"; pastel.blend_type = "MULTIPLY"
@@ -212,9 +212,14 @@ def main(argv):
     ap.add_argument("--out", required=True)
     ap.add_argument("--samples", type=int, default=96)
     ap.add_argument("--res", type=int, default=1600)
+    ap.add_argument("--style", default="soft", choices=["soft", "bright"],
+                    help="bright — более яркое сияние и отражающий пол")
     ap.add_argument("--meta", help="куда записать экранные координаты сияющей головы")
     a = ap.parse_args(argv)
-    cfg = VARIANTS[a.variant]
+    cfg = dict(VARIANTS[a.variant])
+    bright = a.style == "bright"
+    if bright and a.variant == "closeup":
+        cfg.update(cam=(2.6, -5.2, 1.9), target=(-0.2, 0.3, 1.55))
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
@@ -228,8 +233,9 @@ def main(argv):
     yaw = 42 if a.variant != "march" else 70
     heads = []
     for i, (pose, (tint, amt, br, glow), (x, y)) in enumerate(zip(POSES, LOOKS, spots)):
-        m = make_material(f"m{i}", img, tint, amt, br, glow)
-        mo = make_material(f"mo{i}", img, tint, amt, br, glow)
+        lw = 0.42 if bright else 0.32
+        m = make_material(f"m{i}", img, tint, amt, br, glow, lw)
+        mo = make_material(f"mo{i}", img, tint, amt, br, glow, lw)
         root = build_character(f"c{i}", img, a.model == "slim", m, mo, pose, (x, y, 0), yaw)
         heads.append(root)
 
@@ -255,7 +261,10 @@ def main(argv):
 
     gx, gy = spots[3]
     # свет исходит от сияющей фигуры и гаснет к дальним
-    light("POINT", (gx - 0.5, gy - 0.9, 1.5), 150, (1.0, 0.85, 0.92), 0.6)
+    if bright:
+        light("POINT", (gx - 0.9, gy - 0.6, 1.4), 260, (1.0, 0.85, 0.92), 0.6)
+    else:
+        light("POINT", (gx - 0.5, gy - 0.9, 1.5), 150, (1.0, 0.85, 0.92), 0.6)
     # холодный лунный заполняющий свет и контровой
     light("AREA", (2.5, -6, 5), 120, (0.55, 0.6, 1.0), 4, (-1, 1, 1))
     light("AREA", (-2, 5, 3.5), 200, (0.5, 0.45, 1.0), 3, (-1, 1, 1.2))
@@ -268,7 +277,7 @@ def main(argv):
         p.inputs["Base Color"].default_value = (0.03, 0.03, 0.06, 1)
         p.inputs["Roughness"].default_value = 0.35
         fl.data.materials.append(fm)
-        fl.is_shadow_catcher = True  # без видимой линии горизонта
+        fl.is_shadow_catcher = not bright  # soft: без видимой линии горизонта
 
     cam_d = bpy.data.cameras.new("cam"); cam_d.lens = cfg["lens"]
     cam = bpy.data.objects.new("cam", cam_d); cam.location = cfg["cam"]

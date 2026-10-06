@@ -20,7 +20,8 @@ def star(draw, cx, cy, r, color, thin=0.16):
     draw.polygon(pts, fill=color)
 
 
-def main(src, meta, dst):
+def main(src, meta, dst, style="soft"):
+    bright = style == "bright"
     im = Image.open(src).convert("RGB")
     W, H = im.size
     m = json.load(open(meta))
@@ -29,7 +30,8 @@ def main(src, meta, dst):
     body_h = abs(m["feet"][1] - m["top"][1]) * H
 
     # bloom: яркие участки размываем в нескольких масштабах и складываем
-    lum = im.convert("L").point(lambda v: 0 if v < 160 else int((v - 160) * 2.6))
+    th, gain = (150, 2.4) if bright else (160, 2.6)
+    lum = im.convert("L").point(lambda v: 0 if v < th else int((v - th) * gain))
     bright = Image.composite(im, Image.new("RGB", im.size), lum)
     glow = Image.new("RGB", im.size)
     for rad, k in ((W / 160, 0.9), (W / 60, 0.7), (W / 25, 0.55)):
@@ -49,8 +51,12 @@ def main(src, meta, dst):
     fx = Image.new("RGB", im.size)
     d = ImageDraw.Draw(fx)
     s = head_r
-    sparkles = [(-0.9, -2.2, 0.4), (1.7, -1.9, 0.62), (2.4, 1.4, 0.3), (2.0, 5.6, 0.3),
-                (2.8, 3.6, 0.22), (0.4, -3.1, 0.18)]
+    if bright:
+        sparkles = [(-1.9, -1.1, 0.42), (1.7, -1.9, 0.62), (2.3, 1.3, 0.3), (-1.4, 3.6, 0.34),
+                    (2.6, 4.4, 0.24), (-2.6, 0.9, 0.2)]
+    else:
+        sparkles = [(-0.9, -2.2, 0.4), (1.7, -1.9, 0.62), (2.4, 1.4, 0.3), (2.0, 5.6, 0.3),
+                    (2.8, 3.6, 0.22), (0.4, -3.1, 0.18)]
     for dx, dy, r in sparkles:
         star(d, hx + dx * s, hy + dy * s, r * s, (255, 255, 255))
     mx, my, mr = hx + 2.5 * s, hy - 0.6 * s, 0.38 * s
@@ -68,4 +74,4 @@ def main(src, meta, dst):
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:4])
+    main(*sys.argv[1:5])
