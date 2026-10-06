@@ -60,6 +60,50 @@ def box_mesh(name, size, offset, tex, inflate):
     return me
 
 
+def voxel_mesh(name, size, offset, tex, alpha, depth=0.8 * PX, gap=0.05 * PX):
+    """Верхний слой скина «как в моде 3D Skin Layers»: каждый непрозрачный пиксель —
+    отдельный кубик, выступающий над гранью базовой модели."""
+    import bmesh
+    from mathutils import Vector as V
+    w, h, d = size
+    u, v = tex
+    x0, x1 = offset[0], offset[0] + w * PX
+    y0, y1 = offset[1], offset[1] + d * PX
+    z0, z1 = offset[2], offset[2] + h * PX
+    faces = [
+        ([(x0, y0, z1), (x0, y0, z0), (x1, y0, z0), (x1, y0, z1)], (u + d, v + d, w, h), (0, -1, 0)),
+        ([(x1, y1, z1), (x1, y1, z0), (x0, y1, z0), (x0, y1, z1)], (u + 2 * d + w, v + d, w, h), (0, 1, 0)),
+        ([(x0, y1, z1), (x0, y1, z0), (x0, y0, z0), (x0, y0, z1)], (u, v + d, d, h), (-1, 0, 0)),
+        ([(x1, y0, z1), (x1, y0, z0), (x1, y1, z0), (x1, y1, z1)], (u + d + w, v + d, d, h), (1, 0, 0)),
+        ([(x0, y1, z1), (x0, y0, z1), (x1, y0, z1), (x1, y1, z1)], (u + d, v, w, d), (0, 0, 1)),
+        ([(x0, y0, z0), (x0, y1, z0), (x1, y1, z0), (x1, y0, z0)], (u + d + w, v, w, d), (0, 0, -1)),
+    ]
+    bm = bmesh.new()
+    uvl = bm.loops.layers.uv.new()
+    for corners, (tx, ty, tw, th), nrm in faces:
+        TL, BL, TR = V(corners[0]), V(corners[1]), V(corners[3])
+        a, b, n = (TR - TL) / tw, (BL - TL) / th, V(nrm)
+        for j in range(th):
+            for i in range(tw):
+                px, py = tx + i, ty + j
+                if alpha[py, px] < 0.5:
+                    continue
+                c = TL + a * (i + 0.5) + b * (j + 0.5)
+                pts = [bm.verts.new(c + a * sa * 0.5 + b * sb * 0.5 + n * dn)
+                       for dn in (gap, gap + depth) for sa in (-1, 1) for sb in (-1, 1)]
+                quads = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
+                cuv = ((px + 0.5) / 64, 1 - (py + 0.5) / 64)
+                for q in quads:
+                    f = bm.faces.new([pts[k] for k in q])
+                    for loop in f.loops:
+                        loop[uvl].uv = cuv
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    return me
+
+
 def make_material(name, img, tint, tint_amt, brightness, glow, lift_white=0.32):
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
@@ -226,9 +270,14 @@ def empty(name, loc, parent=None):
     return e
 
 
-def build_character(tag, img, slim, mat, mat_overlay, pose, loc, yaw):
+def build_character(tag, img, slim, mat, mat_overlay, pose, loc, yaw, layers3d=False):
     """pose: углы в градусах для частей: head (pitch, yaw, roll), body_pitch, arm_r, arm_l, leg_r, leg_l (pitch, roll)."""
     arm_w = 3 if slim else 4
+    alpha = None
+    if layers3d:
+        import numpy as np
+        W, H = img.size
+        alpha = np.array(img.pixels[:], dtype=np.float32).reshape(H, W, 4)[::-1, :, 3]
     root = empty(f"{tag}_root", loc)
     root.rotation_euler = (0, 0, math.radians(yaw))
     hips = empty(f"{tag}_hips", (0, 0, 12 * PX), root)
@@ -240,7 +289,12 @@ def build_character(tag, img, slim, mat, mat_overlay, pose, loc, yaw):
         (bu, bv, *_), (ou, ov, *_) = PARTS[key]
         infl = 0.5 * PX if key == "head" else 0.25 * PX
         add_obj(f"{tag}_{key}", box_mesh(key, size, box_off, (bu, bv), 0), mat, piv)
-        add_obj(f"{tag}_{key}_ov", box_mesh(key + "_ov", size, box_off, (ou, ov), infl), mat_overlay, piv)
+        if alpha is not None:
+            ov_me = voxel_mesh(key + "_ov", size, box_off, (ou, ov), alpha,
+                               depth=(1.0 if key == "head" else 0.75) * PX)
+        else:
+            ov_me = box_mesh(key + "_ov", size, box_off, (ou, ov), infl)
+        add_obj(f"{tag}_{key}_ov", ov_me, mat_overlay, piv)
         return piv
 
     body = part("body", (0, 0, 0), hips, (-4 * PX, -2 * PX, 0), (8, 12, 4), (0, 0, 0))
