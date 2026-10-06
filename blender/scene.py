@@ -151,7 +151,7 @@ def make_rainbow_material(name, img):
     hsv = n.new("ShaderNodeHueSaturation")
     hsv.inputs["Saturation"].default_value = 1.05
     l.new(texn.outputs["Color"], hsv.inputs["Color"])
-    pastel = mixc(hsv.outputs["Color"], (0.97, 0.94, 1.0, 1), 0.36)
+    pastel = mixc(hsv.outputs["Color"], (0.97, 0.94, 1.0, 1), 0.12)
 
     # мягкий перелив: розовый сверху → жёлто-зелёный снизу (по высоте в мире)
     geo = n.new("ShaderNodeNewGeometry")
@@ -163,7 +163,7 @@ def make_rainbow_material(name, img):
     ramp.color_ramp.elements[1].position = 0.95; ramp.color_ramp.elements[1].color = (1.0, 0.75, 0.9, 1)
     ramp.color_ramp.elements.new(0.55).color = (1.0, 0.97, 0.85, 1)
     l.new(hz.outputs["Value"], ramp.inputs["Fac"])
-    sheen = mixc(pastel, ramp.outputs["Color"], 0.5, "MULTIPLY")
+    sheen = mixc(pastel, ramp.outputs["Color"], 0.3, "MULTIPLY")
     # светится в основном сама (свет сцены почти не влияет) — так цвета не выгорают
     l.new(mixc(sheen, (0, 0, 0, 1), 0.7), bsdf.inputs["Base Color"])
 
@@ -189,7 +189,7 @@ def make_rainbow_material(name, img):
     base_em = sheen  # светится своим цветом
     em = mixc(base_em, rim_s.outputs["Result"], 1.0, "ADD")
     l.new(em, bsdf.inputs["Emission Color"])
-    bsdf.inputs["Emission Strength"].default_value = 1.6
+    bsdf.inputs["Emission Strength"].default_value = 1.15
     l.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
     return mat
 

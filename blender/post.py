@@ -64,7 +64,7 @@ def rainbow_shell(im, mask_path):
     return Image.fromarray((np.clip(a, 0, 1) * 255).astype(np.uint8))
 
 
-def holo_shell(im, mask_path, strength=0.2, lift=0.14):
+def holo_shell(im, mask_path, strength=0.2, lift=0.14, white=0.9):
     """Голографический перелив по всей фигуре + толстое белое свечение с лёгким цветным отливом."""
     W, H = im.size
     u = W / 1920
@@ -100,12 +100,12 @@ def holo_shell(im, mask_path, strength=0.2, lift=0.14):
     rim_in = np.clip(m - shrink(9), 0, 1)
     rim_in = np.asarray(Image.fromarray((rim_in * 255).astype(np.uint8))
                         .filter(ImageFilter.GaussianBlur(3 * u)), np.float32)[..., None] / 255 * mi
-    a = 1 - (1 - a) * (1 - holo_weak * rim_in * 0.75)
+    a = 1 - (1 - a) * (1 - holo_weak * rim_in * 0.75 * white)
     # толстое белое свечение снаружи + широкий мягкий ореол
     out = 1 - mi
-    band = grow(16, 5)[..., None] * out
-    a = a * (1 - band * 0.9) + holo_weak * band * 0.9
-    halo = grow(20, 34)[..., None] * out * 0.55
+    band = grow(6 + 10 * white, 2 + 3 * white)[..., None] * out
+    a = a * (1 - band * white) + holo_weak * band * white
+    halo = grow(20, 34)[..., None] * out * 0.55 * white
     a = 1 - (1 - a) * (1 - halo * holo_weak)
     return Image.fromarray((np.clip(a, 0, 1) * 255).astype(np.uint8))
 
@@ -135,6 +135,10 @@ def main(src, meta, dst, style="soft", mask=None, shell="holo"):
     if mask:
         if shell == "neon":
             im = rainbow_shell(im, mask)
+        elif shell == "holo-skin":  # свечение слабее — скин хорошо видно
+            im = holo_shell(im, mask, strength=0.14, lift=0.0, white=0.45)
+        elif shell == "holo-mid":
+            im = holo_shell(im, mask, strength=0.18, lift=0.05, white=0.65)
         elif shell == "holo-strong":
             im = holo_shell(im, mask, strength=0.32, lift=0.2)
         else:
