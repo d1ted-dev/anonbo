@@ -320,7 +320,11 @@ def main(argv):
         spots = [(-3.3, 1.0), (-1.9, 0.7), (-0.5, 0.4), (0.95, 0.1)]
     yaw = 42 if a.variant != "march" else 70
     heads = []
-    for i, (pose, (tint, amt, br, glow), (x, y)) in enumerate(zip(POSES, LOOKS, spots)):
+    looks = list(LOOKS)
+    if a.shell:
+        # прошлая версия холодная и темнее, чтобы на ней читался тёплый свет счастливой
+        looks[2] = ((0.45, 0.55, 1.0), 0.6, 0.55, 0.0)
+    for i, (pose, (tint, amt, br, glow), (x, y)) in enumerate(zip(POSES, looks, spots)):
         lw = 0.42 if bright else 0.32
         if a.shell and glow > 0:
             m = mo = make_rainbow_material(f"rb{i}", img)

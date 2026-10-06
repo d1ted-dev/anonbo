@@ -122,9 +122,8 @@ def main(src, meta, dst, style="soft", mask=None, shell="holo"):
     # bloom: яркие участки размываем в нескольких масштабах и складываем
     th, gain = (150, 2.4) if bright else (160, 2.6)
     lum = im.convert("L").point(lambda v: 0 if v < th else int((v - th) * gain))
-    if mask:  # сияющую фигуру не выбеливаем — её свет даёт оболочка
-        inv = Image.open(mask).convert("L").resize(im.size).point(lambda v: 255 - v)
-        lum = ImageChops.multiply(lum, inv)
+    if mask:  # с оболочкой bloom не нужен: он выбеливает фигуры, свет даёт сама сцена
+        lum = Image.new("L", im.size, 0)
     hot = Image.composite(im, Image.new("RGB", im.size), lum)
     glow = Image.new("RGB", im.size)
     for rad, k in ((W / 160, 0.9), (W / 60, 0.7), (W / 25, 0.55)):
