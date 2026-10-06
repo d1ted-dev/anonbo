@@ -34,7 +34,8 @@ def rainbow_shell(im, mask_path):
     """Радужная оболочка по силуэту: розовый слева сверху → лиловый → голубой → зелёный → жёлтый снизу."""
     W, H = im.size
     u = W / 1920
-    mask = Image.open(mask_path).convert("L").resize(im.size)
+    mask = Image.open(mask_path).convert("RGBA").resize(im.size)
+    mask = Image.fromarray((np.asarray(mask, np.float32)[..., :3].mean(-1) * np.asarray(mask, np.float32)[..., 3] / 255).astype(np.uint8))
     m = np.asarray(mask, np.float32) / 255
     ys, xs = np.nonzero(m > 0.5)
     cx, cy = xs.mean(), ys.mean()
@@ -64,11 +65,12 @@ def rainbow_shell(im, mask_path):
     return Image.fromarray((np.clip(a, 0, 1) * 255).astype(np.uint8))
 
 
-def holo_shell(im, mask_path, strength=0.2, lift=0.14, white=0.9):
+def holo_shell(im, mask_path, strength=0.2, lift=0.14, white=0.9, toward_right=False):
     """Голографический перелив по всей фигуре + толстое белое свечение с лёгким цветным отливом."""
     W, H = im.size
     u = W / 1920
-    mask = Image.open(mask_path).convert("L").resize(im.size)
+    mask = Image.open(mask_path).convert("RGBA").resize(im.size)
+    mask = Image.fromarray((np.asarray(mask, np.float32)[..., :3].mean(-1) * np.asarray(mask, np.float32)[..., 3] / 255).astype(np.uint8))
     m = np.asarray(mask, np.float32) / 255
     ys, xs = np.nonzero(m > 0.5)
     x0, x1, y0, y1 = xs.min(), xs.max(), ys.min(), ys.max()
@@ -107,10 +109,15 @@ def holo_shell(im, mask_path, strength=0.2, lift=0.14, white=0.9):
     a = a * (1 - band * white) + holo_weak * band * white
     halo = grow(20, 34)[..., None] * out * 0.55 * white
     a = 1 - (1 - a) * (1 - halo * holo_weak)
+    if toward_right:
+        # отсвет сильнее с той стороны, где стоит счастливая (справа в кадре)
+        orig = np.asarray(im, np.float32) / 255
+        w = np.clip((xx - x0) / (x1 - x0 + 1) * 1.1 - 0.1, 0, 1)[..., None]
+        a = orig * (1 - w) + a * w
     return Image.fromarray((np.clip(a, 0, 1) * 255).astype(np.uint8))
 
 
-def main(src, meta, dst, style="soft", mask=None, shell="holo"):
+def main(src, meta, dst, style="soft", mask=None, shell="holo", mask_prev=None):
     bright = style == "bright"
     im = Image.open(src).convert("RGB")
     W, H = im.size
@@ -136,6 +143,8 @@ def main(src, meta, dst, style="soft", mask=None, shell="holo"):
             im = rainbow_shell(im, mask)
         elif shell == "holo-skin":  # свечение слабее — скин хорошо видно
             im = holo_shell(im, mask, strength=0.14, lift=0.0, white=0.45)
+            if mask_prev:  # отсвет тех же цветов на прошлой версии, но слабее
+                im = holo_shell(im, mask_prev, strength=0.22, lift=0.08, white=0.42, toward_right=True)
         elif shell == "holo-mid":
             im = holo_shell(im, mask, strength=0.18, lift=0.05, white=0.65)
         elif shell == "holo-strong":
@@ -178,4 +187,4 @@ def main(src, meta, dst, style="soft", mask=None, shell="holo"):
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:7])
+    main(*sys.argv[1:8])

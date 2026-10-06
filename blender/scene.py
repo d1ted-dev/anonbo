@@ -302,6 +302,8 @@ def main(argv):
     ap.add_argument("--shell", action="store_true",
                     help="сияющая фигура со своими цветами и радужной оболочкой")
     ap.add_argument("--mask", help="куда отрендерить маску силуэта сияющей фигуры")
+    ap.add_argument("--mask-prev", dest="mask_prev",
+                    help="маска прошлой версии (на неё ложится отсвет счастливой)")
     ap.add_argument("--meta", help="куда записать экранные координаты сияющей головы")
     a = ap.parse_args(argv)
     cfg = dict(VARIANTS[a.variant])
@@ -414,22 +416,39 @@ def main(argv):
     bpy.ops.render.render(write_still=True)
 
     if a.mask:
-        # второй быстрый проход: только сияющая фигура, белым по чёрному
+        # быстрые проходы масок: белым — нужная фигура, чёрным — те, кто её загораживает
         mm = make_mask_material(img)
-        for ob in sc.objects:
-            if ob.type == "MESH":
-                if ob.name.startswith("c3_"):
-                    ob.data.materials[0] = mm
-                else:
-                    ob.hide_render = True
+        black = bpy.data.materials.new("black")
+        black.use_nodes = True
+        bn = black.node_tree.nodes
+        bn.remove(bn["Principled BSDF"])
+        black.node_tree.links.new(bn.new("ShaderNodeHoldout").outputs[0], bn["Material Output"].inputs["Surface"])
         bg.inputs["Color"].default_value = (0, 0, 0, 1)
+        for ob in list(sc.objects):
+            if ob.type == "LIGHT":
+                ob.hide_render = True
         sc.render.use_freestyle = False
         sc.view_settings.view_transform = "Standard"
         sc.view_settings.look = "None"
         sc.cycles.samples = 8
         sc.cycles.use_denoising = False
-        sc.render.filepath = a.mask
-        bpy.ops.render.render(write_still=True)
+        passes = [("c3_", (), a.mask)]
+        if a.mask_prev:
+            passes.append(("c2_", ("c3_",), a.mask_prev))
+        for target, blockers, path in passes:
+            for ob in sc.objects:
+                if ob.type != "MESH":
+                    continue
+                if ob.name.startswith(target):
+                    ob.hide_render = False
+                    ob.data.materials[0] = mm
+                elif ob.name.startswith(blockers):
+                    ob.hide_render = False
+                    ob.data.materials[0] = black
+                else:
+                    ob.hide_render = True
+            sc.render.filepath = path
+            bpy.ops.render.render(write_still=True)
 
     if a.meta:
         import json
