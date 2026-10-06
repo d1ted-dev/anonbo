@@ -167,3 +167,77 @@ def shuffle_particles(seed):
         ob.rotation_euler = (rnd.uniform(0, 3), rnd.uniform(0, 3), rnd.uniform(0, 3))
         s = rnd.choice((0.7, 1.0, 1.4))
         ob.scale = (s, s, s)
+
+
+def polish(sc):
+    """Финальный вид для рендера на видеокарте: рельеф и отлив у блоков, bloom вокруг
+    светящегося, качественные настройки Cycles и цвета."""
+    for mat in bpy.data.materials:
+        if not mat.name.startswith("blk_") or not mat.use_nodes:
+            continue
+        n, l = mat.node_tree.nodes, mat.node_tree.links
+        bsdf = n.get("Principled BSDF")
+        tex = next((x for x in n if x.type == "TEX_IMAGE"), None)
+        if not bsdf or not tex:
+            continue
+        # рельеф из яркости самой текстуры — тёмные пиксели «утоплены»
+        bw = n.new("ShaderNodeRGBToBW")
+        bump = n.new("ShaderNodeBump")
+        bump.inputs["Strength"].default_value = 0.22
+        bump.inputs["Distance"].default_value = 0.02
+        l.new(tex.outputs["Color"], bw.inputs["Color"])
+        l.new(bw.outputs["Val"], bump.inputs["Height"])
+        l.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+        name = mat.name
+        if "wool" in name:
+            bsdf.inputs["Roughness"].default_value = 1.0
+            bsdf.inputs["Sheen Weight"].default_value = 0.6
+            bsdf.inputs["Sheen Roughness"].default_value = 0.6
+            bump.inputs["Strength"].default_value = 0.35
+        elif "planks" in name or "log" in name:
+            bsdf.inputs["Roughness"].default_value = 0.62
+        elif "blackstone" in name:
+            bsdf.inputs["Roughness"].default_value = 0.45
+    for mat in bpy.data.materials:
+        if mat.name[:2] in ("L_", "R_") and mat.use_nodes:
+            b = mat.node_tree.nodes.get("Principled BSDF")
+            if b:
+                b.inputs["Roughness"].default_value = 0.72
+                b.inputs["Sheen Weight"].default_value = 0.12
+
+    # bloom вокруг ламп, светокамня и пылинок
+    ng = bpy.data.node_groups.new("Finish", "CompositorNodeTree")
+    ng.interface.new_socket("Image", in_out="OUTPUT", socket_type="NodeSocketColor")
+    rl = ng.nodes.new("CompositorNodeRLayers")
+    glare = ng.nodes.new("CompositorNodeGlare")
+    out = ng.nodes.new("NodeGroupOutput")
+    for prop, val in (("glare_type", "BLOOM"), ("quality", "HIGH")):
+        try:
+            setattr(glare, prop, val)
+        except (AttributeError, TypeError):
+            pass
+    for sock, val in (("Threshold", 1.2), ("Strength", 0.45), ("Size", 0.6)):
+        if sock in glare.inputs:
+            glare.inputs[sock].default_value = val
+    ng.links.new(rl.outputs["Image"], glare.inputs["Image"])
+    ng.links.new(glare.outputs["Image"], out.inputs[0])
+    sc.compositing_node_group = ng
+    sc.render.use_compositing = True
+
+    cy = sc.cycles
+    cy.samples = 256
+    cy.use_adaptive_sampling = True
+    cy.adaptive_threshold = 0.01
+    cy.use_denoising = True
+    cy.denoiser = "OPENIMAGEDENOISE"
+    try:
+        cy.denoising_use_gpu = True
+    except AttributeError:
+        pass
+    cy.max_bounces = 10
+    cy.volume_bounces = 1
+    cy.volume_step_rate = 1.0
+    sc.render.use_persistent_data = True
+    sc.render.film_transparent = False
+    sc.view_settings.view_transform = "AgX"
+    sc.view_settings.look = "AgX - Medium High Contrast"

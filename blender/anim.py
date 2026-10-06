@@ -415,6 +415,9 @@ def export_blend(path, sc, tl, stage, audio):
         strip = coll.new_sound("music", os.path.abspath(wav), 1, 1)
         strip.sound.pack()
     # настройки рендера под видеокарту, вывод сразу в mp4 со звуком
+    if stage:
+        from stage import polish
+        polish(sc)
     sc.cycles.device = "GPU"
     sc.cycles.samples = 256
     sc.render.resolution_x = sc.render.resolution_y = 1080

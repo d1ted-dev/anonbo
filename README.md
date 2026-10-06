@@ -40,3 +40,15 @@ for v in closeup march; do
       renders/raw/${v}_final_mprev.png
 done
 ```
+
+## Танец (покадровая анимация на сцене из блоков)
+
+```bash
+python3 blender/fetch_blocks.py 26.2 blocks          # текстуры блоков из клиента Minecraft
+# проект для рендера на своей видеокарте (анимация, звук, текстуры упакованы):
+python3 blender/anim.py --left skins/friend.png --right skins/4ered1t.png \
+    --audio original.mp4 --out x.mp4 --stage blocks --export-blend dance.blend
+```
+
+В `dance.blend`: 734 кадра, 30 fps, Cycles GPU 256 сэмплов, OIDN, bloom в композитинге,
+вывод `//render/dance_*.mp4` со звуком. Render → Render Animation (Ctrl+F12).
